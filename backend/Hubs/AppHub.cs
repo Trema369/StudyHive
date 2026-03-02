@@ -57,24 +57,31 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         }
     }
 
-    public async Task<Payment?> ProcessPayment(Payment payment) {
+    public async Task<Payment?> ProcessPayment(Payment payment)
+    {
         if (payment.reasonType == PaymentReasonType.Buy)
         {
-            var res = await ecocashClient.InitPayment(payment.fromId, payment.amount ?? 0.0f, payment.reason);
-            Thread verifyThread = new Thread(new ThreadStart(() => EnsureTransaction(res, payment)));
+            var res = await ecocashClient.InitPayment(
+                payment.fromId,
+                payment.amount ?? 0.0f,
+                payment.reason
+            );
+            Thread verifyThread = new Thread(
+                new ThreadStart(() => EnsureTransaction(res, payment))
+            );
             verifyThread.Start();
             return await GetDisplayPayment(payment, payment.toId);
         }
 
-
         var user = await GetUser(payment.fromId);
-        if (user.money > payment.amount) {
+        if (user.money > payment.amount)
+        {
             RecordId fromId = ("user", payment.fromId);
             await dbClient.Query($"UPDATE {fromId} SET money -= {payment.amount};");
             RecordId toId = ("user", payment.toId!);
             await dbClient.Query($"UPDATE {toId} SET money += {payment.amount};");
             var res = (await dbClient.Create("payment", new DbPayment(payment))).ToBase();
-            return await GetDisplayPayment(res, res.fromId) ;
+            return await GetDisplayPayment(res, res.fromId);
         }
         else
         {
@@ -201,10 +208,20 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public async Task<List<FlashcardCard>> GetAIFlashcards(string prompt)
     {
-        var result = await GetAIResponse("ministral", [new Message {userId="User", date=DateTime.Now, text=$"Generate as many flashcards as you can from these notes::\n{prompt}"}]);
+        var result = await GetAIResponse(
+            "ministral",
+            [
+                new Message
+                {
+                    userId = "User",
+                    date = DateTime.Now,
+                    text = $"Generate as many flashcards as you can from these notes::\n{prompt}",
+                },
+            ]
+        );
         var jsonDoc = JsonDocument.Parse(result?.text ?? "");
-        string flashcardsText = jsonDoc.RootElement
-            .GetProperty("choices")[0]
+        string flashcardsText = jsonDoc
+            .RootElement.GetProperty("choices")[0]
             .GetProperty("message")
             .GetProperty("content")
             .GetString();
@@ -219,7 +236,9 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
             {
                 currentCard = new FlashcardCard();
                 currentCard.front = line.Replace("**Front:**", "").Replace("Front:", "").Trim();
-                currentCard.front = new Regex(@"^\s*\d+\.\s*").Replace(currentCard.front, "").Trim();
+                currentCard.front = new Regex(@"^\s*\d+\.\s*")
+                    .Replace(currentCard.front, "")
+                    .Trim();
             }
             else if (line.StartsWith("**Back:**") || line.Contains("Back:"))
             {
@@ -235,39 +254,47 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public async Task<Message?> GetAIResponse(string model, List<Message> msgs)
     {
-
         var res = "";
         if (model == "ministral" || !await IsAIAvailable())
         {
-            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "Vsf0g0De4A5r0H1sWqBhI6X9qjN0R4sO");
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                "Bearer",
+                "Vsf0g0De4A5r0H1sWqBhI6X9qjN0R4sO"
+            );
 
             var requestBody = new
             {
                 model = "ministral-8b-2410",
-                messages = msgs
-                .Select(
-                    (x) =>
-                        new {
-                            role = x.userId == "AI"
-                                ? "assistant"
-                                : "user",
-                            content = SplitThink(x.text ?? "").Item1
-                        }
-                )
-                .ToList(),
-                max_tokens = 300
+                messages = msgs.Select(
+                        (x) =>
+                            new
+                            {
+                                role = x.userId == "AI" ? "assistant" : "user",
+                                content = SplitThink(x.text ?? "").Item1,
+                            }
+                    )
+                    .ToList(),
+                max_tokens = 300,
             };
 
-            var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-            var response = await httpClient.PostAsync("https://api.mistral.ai/v1/chat/completions", content);
+            var content = new StringContent(
+                JsonSerializer.Serialize(requestBody),
+                Encoding.UTF8,
+                "application/json"
+            );
+            var response = await httpClient.PostAsync(
+                "https://api.mistral.ai/v1/chat/completions",
+                content
+            );
             res = await response.Content.ReadAsStringAsync();
-        }else {
+        }
+        else
+        {
             var chat = new OllamaSharp.Chat(AIClient);
             chat.Model = model;
             var message = msgs.Last();
             msgs.RemoveAt(msgs.Count - 1);
-            chat.Messages = msgs
-                .Select(
+            chat.Messages = msgs.Select(
                     (x) =>
                         new OllamaSharp.Models.Chat.Message(
                             x.userId == "AI"
@@ -277,7 +304,7 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
                         )
                 )
                 .ToList();
-            
+
             await foreach (var txt in chat.SendAsync(message.text ?? ""))
             {
                 res += txt;
@@ -307,7 +334,9 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         if (payment.fromId == userId)
         {
             payment.toId = (await GetUser(payment.toId)).username;
-        } else if (payment.reasonType != PaymentReasonType.Buy){
+        }
+        else if (payment.reasonType != PaymentReasonType.Buy)
+        {
             payment.fromId = (await GetUser(payment.fromId)).username;
         }
 
@@ -319,10 +348,9 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
             case PaymentReasonType.Flashcard:
                 payment.reason = (await GetFlashcard(payment.reason)).name;
                 break;
-            
         }
 
-        return payment; 
+        return payment;
     }
 
     public async Task<List<Payment>> GetDisplayPayments(string userId)
@@ -331,12 +359,11 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
             $"SELECT * FROM payment WHERE fromId = {userId} or toId = {userId};"
         );
 
-
         var arr = result.GetValue<List<DbPayment>>(0);
         if (arr is not null)
         {
             var payments = arr.Select(x => x.ToBase()).ToList();
-            
+
             for (var i = 0; payments.Count > i; i++)
             {
                 payments[i] = await GetDisplayPayment(payments[i], userId);
@@ -714,7 +741,8 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
     {
         List<DbQuiz> quizzes = [];
 
-        if (search.Trim().Any()) {
+        if (search.Trim().Any())
+        {
             var res = await dbClient.Query(
                 $"SELECT *, search::score(1) + search::score(2) + search::score(3) * 1.5 AS score FROM quiz WHERE name @1@ {search} or description @2@ {search} or code @3@ {search} ORDER BY score DESC;"
             );
@@ -724,16 +752,14 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
                 return quizzes.Select((x) => x.ToBase()).ToList();
             }
         }
-            
-        var result = await dbClient.Query(
-            $"SELECT * FROM quiz LIMIT 20;"
-        );
+
+        var result = await dbClient.Query($"SELECT * FROM quiz LIMIT 20;");
         quizzes = result.GetValue<List<DbQuiz>>(0);
         if (quizzes is not null)
         {
             return quizzes.Select((x) => x.ToBase()).ToList();
         }
-            
+
         return [];
     }
 
@@ -741,7 +767,8 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
     {
         List<DbFlashcard> flashcards = [];
 
-        if (search.Trim().Any()) {
+        if (search.Trim().Any())
+        {
             var res = await dbClient.Query(
                 $"SELECT *, search::score(1) + search::score(2) + search::score(3) * 1.5 AS score FROM flashcard WHERE name @1@ {search} or description @2@ {search} or code @3@ {search} ORDER BY score DESC;"
             );
@@ -752,15 +779,13 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
             }
         }
 
-        var result = await dbClient.Query(
-            $"SELECT * FROM flashcard LIMIT 20;"
-        );
+        var result = await dbClient.Query($"SELECT * FROM flashcard LIMIT 20;");
         flashcards = result.GetValue<List<DbFlashcard>>(0);
         if (flashcards is not null)
         {
             return flashcards.Select((x) => x.ToBase()).ToList();
         }
-            
+
         return [];
     }
 
@@ -768,7 +793,8 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
     {
         List<DbUser> users = [];
 
-        if (search.Trim().Any()) {
+        if (search.Trim().Any())
+        {
             var res = await dbClient.Query(
                 $"SELECT *, search::score(1) + search::score(2) AS score FROM user WHERE username @1@ {search} or email @2@ {search} ORDER BY score DESC;"
             );
@@ -779,15 +805,13 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
             }
         }
 
-        var result = await dbClient.Query(
-            $"SELECT * FROM flashcard LIMIT 20;"
-        );
+        var result = await dbClient.Query($"SELECT * FROM flashcard LIMIT 20;");
         users = result.GetValue<List<DbUser>>(0);
         if (users is not null)
         {
             return users.Select((x) => x.ToBase()).ToList();
         }
-            
+
         return [];
     }
 
