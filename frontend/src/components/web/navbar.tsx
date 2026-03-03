@@ -1,11 +1,13 @@
 'use client';
 import { useState } from 'react';
 import { AuthCard } from './AuthCard';
+import { AIChatPopup } from './ai-chat-popup';
 import { Button, buttonVariants } from '@/components/ui/button';
 import Link from 'next/link';
 import { ThemeToggle } from './theme-toggle';
 export function Navbar() {
-    const [open, setOpen] = useState(false);
+    const [authOpen, setAuthOpen] = useState(false);
+    const [aiOpen, setAiOpen] = useState(false);
     return (
         <nav
             className="w-full px-6 py-3 
@@ -42,20 +44,21 @@ export function Navbar() {
                 >
                     Leaderboard
                 </Link>
-                <Link
-                    className={buttonVariants({ variant: 'ghost' })}
-                    href="/plantanalysis"
-                >
-                    HiveAi
-                </Link>
+                <Button variant="ghost" onClick={() => setAiOpen(true)}>
+                    Hive AI
+                </Button>
             </div>
 
             {/* Right Section */}
             <div className="flex-1 flex justify-end items-center gap-2">
-                <Button variant="outline" onClick={() => setOpen(true)}>
+                <Button variant="outline" onClick={() => setAiOpen(true)}>
+                    AI
+                </Button>
+                <Button variant="outline" onClick={() => setAuthOpen(true)}>
                     Get started
                 </Button>
-                <AuthCard open={open} setOpen={setOpen} />
+                <AuthCard open={authOpen} setOpen={setAuthOpen} />
+                <AIChatPopup open={aiOpen} setOpen={setAiOpen} />
                 <ThemeToggle />
             </div>
         </nav>

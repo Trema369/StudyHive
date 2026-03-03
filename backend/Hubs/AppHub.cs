@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Collections.Concurrent;
 using backend.Shared;
 using backend.Shared.Models;
 using Microsoft.AspNetCore.SignalR;
@@ -12,7 +13,7 @@ namespace backend.Hubs;
 
 public class AppHub : Hub<IAppHubClient>, IAppHubServer
 {
-    private Dictionary<String, String> connectedChats = new();
+    private readonly ConcurrentDictionary<string, string> connectedChats = new();
     HttpClient httpClient = new HttpClient();
     private readonly SurrealDbClient dbClient;
     private readonly OllamaSharp.OllamaApiClient AIClient;
@@ -33,6 +34,13 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public override Task OnDisconnectedAsync(Exception? exception)
     {
+        if (
+            connectedChats.TryRemove(Context.ConnectionId, out var parentId)
+            && !string.IsNullOrWhiteSpace(parentId)
+        )
+        {
+            return Groups.RemoveFromGroupAsync(Context.ConnectionId, parentId);
+        }
         Console.WriteLine("Disconnected");
         Console.WriteLine(exception);
         return base.OnDisconnectedAsync(exception);
@@ -91,11 +99,18 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public async Task<Message> SendMessage(Message msg)
     {
-        var res = await dbClient.Create("message", new DbMessage(msg));
-        var message = res.ToBase();
-        //await Clients.Clients(connectedChats.Where((x) => x.Value == msg.parentId && x.Key != Context.ConnectionId).Select((x) => x.Key)).ReceiveMessage(message);
-        await Clients.AllExcept(Context.ConnectionId).ReceiveMessage(message);
+        var message = await SaveMessage(msg);
+        if (!string.IsNullOrWhiteSpace(message.parentId))
+        {
+            await Clients.OthersInGroup(message.parentId).ReceiveMessage(message);
+        }
         return message;
+    }
+
+    public async Task<Message> SaveMessage(Message msg)
+    {
+        var res = await dbClient.Create("message", new DbMessage(msg));
+        return res.ToBase();
     }
 
     public async Task<Chat> CreateChat(Chat chat)
@@ -128,7 +143,16 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public async Task ConnectToChat(string parent)
     {
-        connectedChats.Add(Context.ConnectionId, parent);
+        if (string.IsNullOrWhiteSpace(parent))
+            return;
+
+        if (connectedChats.TryGetValue(Context.ConnectionId, out var oldParent) && oldParent != parent)
+        {
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, oldParent);
+        }
+
+        connectedChats.AddOrUpdate(Context.ConnectionId, parent, (_, _) => parent);
+        await Groups.AddToGroupAsync(Context.ConnectionId, parent);
     }
 
     public async Task<List<Message>> GetMessages(string parent)
@@ -326,7 +350,9 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         if (response is null)
             return null;
         response.parentId = parent;
-        return await SendMessage(response);
+        var saved = await SaveMessage(response);
+        await Clients.Group(parent).ReceiveMessage(saved);
+        return saved;
     }
 
     private async Task<Payment> GetDisplayPayment(Payment payment, string userId)
