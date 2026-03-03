@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using SurrealDb.Net.Models;
 
-namespace studbud.Shared.Models;
+namespace backend.Shared.Models;
 
 public class DbClass : Record
 {

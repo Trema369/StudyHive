@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace studbud.Shared.Models;
+namespace backend.Shared.Models;
 
 public class Chat
 {

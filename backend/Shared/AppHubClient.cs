@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using studbud.Shared.Models;
+using backend.Shared.Models;
 
-namespace studbud.Shared;
+namespace backend.Shared;
 
 public interface IAppHubClient
 {

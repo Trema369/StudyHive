@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using studbud.Shared.Models;
+using backend.Shared.Models;
 
-namespace studbud.Shared;
+namespace backend.Shared;
 
 public interface IAppHubServer
 {
@@ -45,7 +45,6 @@ public interface IAppHubServer
     Task RemoveFlashcardCard(string cardId);
     Task<List<FlashcardCard>> GetFlashcardCards(string flashId);
 
-
     Task<Quiz> CreateQuiz(Quiz quiz);
     Task<Quiz> UpdateQuiz(Quiz quiz);
     Task<Quiz> GetQuiz(string quizId);
@@ -53,7 +52,7 @@ public interface IAppHubServer
     Task<Question> UpdateQuestion(Question q);
     Task RemoveQuestion(string questionId);
     Task<List<Question>> GetQuestions(string quizId);
-    
+
     Task<QuizSubmission> SubmitQuiz(QuizSubmission sub);
     Task<List<QuizSubmission>> GetQuizSubmissions(string quizId);
     Task<Submission> SetSubmissionMark(string submissionId, int mark);

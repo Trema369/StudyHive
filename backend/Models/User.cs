@@ -1,11 +1,11 @@
 using SurrealDb.Net.Models;
 
-namespace studbud.Shared.Models;
+namespace backend.Shared.Models;
 
 public class DbUserInfo : Record
 {
     public string? username { get; set; }
-    public float? money {get; set;}
+    public float? money { get; set; }
     public string? email { get; set; }
     public string? password { get; set; }
 
@@ -38,7 +38,7 @@ public class DbUserInfo : Record
 public class DbUser : Record
 {
     public string? username { get; set; }
-    public float? money {get; set;}
+    public float? money { get; set; }
     public string? email { get; set; }
 
     public DbUser() { }

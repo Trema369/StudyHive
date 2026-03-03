@@ -1,6 +1,6 @@
+using backend.Hubs;
 using Microsoft.AspNetCore.ResponseCompression;
 using OllamaSharp;
-using studbud.Hubs;
 using SurrealDb.Net;
 
 // SurrealDB setup
@@ -15,6 +15,7 @@ var surreal = SurrealDbOptions
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddSingleton<AppHub>();
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 

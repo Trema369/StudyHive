@@ -1,4 +1,4 @@
-namespace studbud.Shared.Models;
+namespace backend.Shared.Models;
 
 public class UserInfo
 {

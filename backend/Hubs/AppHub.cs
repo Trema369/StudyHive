@@ -2,13 +2,13 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using backend.Shared;
+using backend.Shared.Models;
 using Microsoft.AspNetCore.SignalR;
-using studbud.Shared;
-using studbud.Shared.Models;
 using SurrealDb.Net;
 using SurrealDb.Net.Models;
 
-namespace studbud.Hubs;
+namespace backend.Hubs;
 
 public class AppHub : Hub<IAppHubClient>, IAppHubServer
 {

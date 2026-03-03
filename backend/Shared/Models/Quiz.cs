@@ -1,12 +1,12 @@
 using System.Collections.Generic;
 
-namespace studbud.Shared.Models;
+namespace backend.Shared.Models;
 
 public class Quiz
 {
     public string? name { get; set; }
-    public float? cost {get; set;}
-    public bool? published {get; set;}
+    public float? cost { get; set; }
+    public bool? published { get; set; }
     public string? description { get; set; }
     public string? userId { get; set; }
     public string? code { get; set; }

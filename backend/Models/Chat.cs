@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using SurrealDb.Net.Models;
 
-namespace studbud.Shared.Models;
+namespace backend.Shared.Models;
 
 public class DbChat : Record
 {
