@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import { setAuthUser } from '@/lib/auth';
 
 interface AuthCardProps {
     open: boolean;
@@ -19,6 +20,8 @@ interface AuthCardProps {
 }
 
 export function AuthCard({ open, setOpen }: AuthCardProps) {
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:5082';
+    const [mode, setMode] = useState<'signin' | 'signup'>('signin');
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -29,14 +32,14 @@ export function AuthCard({ open, setOpen }: AuthCardProps) {
         setLoading(true);
         setError('');
         try {
-            const user = await fetch('http://localhost:5082/api/auth/signin', {
+            const user = await fetch(`${API_BASE}/api/auth/signin`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password }),
             });
-            if (!user.ok) throw new Error('Invalid credentials');
-            const data = await user.json();
-            console.log('Signed in user:', data);
+            const payload = await user.json();
+            if (!user.ok) throw new Error(payload?.message ?? 'Invalid credentials');
+            setAuthUser(payload);
             setOpen(false);
         } catch (err) {
             setError((err as Error).message);
@@ -49,14 +52,14 @@ export function AuthCard({ open, setOpen }: AuthCardProps) {
         setLoading(true);
         setError('');
         try {
-            const user = await fetch('http://localhost:5082/api/auth/signup', {
+            const user = await fetch(`${API_BASE}/api/auth/signup`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, email, password }),
             });
-            if (!user.ok) throw new Error('Sign up failed');
-            const data = await user.json();
-            console.log('Signed up user:', data);
+            const payload = await user.json();
+            if (!user.ok) throw new Error(payload?.message ?? 'Sign up failed');
+            setAuthUser(payload);
             setOpen(false);
         } catch (err) {
             setError((err as Error).message);
@@ -64,6 +67,14 @@ export function AuthCard({ open, setOpen }: AuthCardProps) {
             setLoading(false);
         }
     }
+    const submit = () => {
+        if (mode === 'signin') {
+            void handleSignIn();
+            return;
+        }
+        void handleSignUp();
+    };
+
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogOverlay className="fixed inset-0 bg-black/30 backdrop-blur-md" />
@@ -85,48 +96,58 @@ export function AuthCard({ open, setOpen }: AuthCardProps) {
                     </div>
                 )}
 
+                <div className="flex gap-2">
+                    <Button
+                        className="flex-1"
+                        variant={mode === 'signin' ? 'default' : 'outline'}
+                        onClick={() => setMode('signin')}
+                        disabled={loading}
+                    >
+                        Sign In
+                    </Button>
+                    <Button
+                        className="flex-1"
+                        variant={mode === 'signup' ? 'default' : 'outline'}
+                        onClick={() => setMode('signup')}
+                        disabled={loading}
+                    >
+                        Sign Up
+                    </Button>
+                </div>
+
                 <Input
                     className="w-full h-12"
                     placeholder="Username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') submit();
+                    }}
                 />
-                <Input
-                    className="w-full h-12"
-                    placeholder="Email (for sign up)"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                />
+                {mode === 'signup' && (
+                    <Input
+                        className="w-full h-12"
+                        placeholder="Email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') submit();
+                        }}
+                    />
+                )}
                 <Input
                     className="w-full h-12"
                     type="password"
                     placeholder="Password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') submit();
+                    }}
                 />
 
-                <Button className="w-full h-12" disabled={loading}>
-                    Continue with Google
-                </Button>
-
-                <Button
-                    className="flex-1 h-12"
-                    onClick={handleSignUp}
-                    disabled={loading}
-                >
-                    Sign Up
-                </Button>
-                <div className="flex items-center gap-3">
-                    <Separator className="flex-1 " />
-                    <span className="text-xs text-muted-foreground">or</span>
-                    <Separator className="flex-1 " />
-                </div>
-                <Button
-                    className="flex-1 h-12"
-                    onClick={handleSignIn}
-                    disabled={loading}
-                >
-                    Sign In
+                <Button className="flex-1 h-12" onClick={submit} disabled={loading}>
+                    {mode === 'signin' ? 'Sign In' : 'Sign Up'}
                 </Button>
             </DialogContent>
         </Dialog>

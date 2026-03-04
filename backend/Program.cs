@@ -27,6 +27,7 @@ builder.Services.AddResponseCompression(opts =>
 });
 
 builder.Services.AddSurreal(surreal);
+builder.Services.AddSingleton(surreal);
 
 string? origins = "http://localhost:3000"; // your Next.js frontend
 builder.Services.AddCors(options =>
@@ -72,16 +73,68 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS money ON TABLE user TYPE float;
         DEFINE FIELD IF NOT EXISTS email ON TABLE user TYPE string;
         DEFINE FIELD IF NOT EXISTS password ON TABLE user TYPE string;
+        DEFINE TABLE user SCHEMALESS
+            PERMISSIONS
+                FOR select WHERE id = $auth.id,
+                FOR create WHERE $access = 'account',
+                FOR update WHERE id = $auth.id,
+                FOR delete WHERE id = $auth.id;
+        DEFINE INDEX IF NOT EXISTS user_username_unique ON TABLE user COLUMNS username UNIQUE;
+        DEFINE INDEX IF NOT EXISTS user_email_unique ON TABLE user COLUMNS email UNIQUE;
+        DEFINE ACCESS IF NOT EXISTS account ON DATABASE TYPE RECORD
+            SIGNUP ( CREATE user CONTENT {
+                username: $username,
+                email: string::lowercase($email),
+                password: crypto::argon2::generate($password),
+                money: 0.0f
+            } )
+            SIGNIN ( SELECT * FROM user
+                WHERE string::lowercase(username) = string::lowercase($username)
+                AND crypto::argon2::compare(password, $password)
+            );
 
         DEFINE ANALYZER user_analyzer TOKENIZERS class, blank FILTERS lowercase, ascii;
         DEFINE INDEX username_index ON TABLE user COLUMNS username SEARCH ANALYZER user_analyzer BM25;
         DEFINE INDEX email_index ON TABLE user COLUMNS email SEARCH ANALYZER user_analyzer BM25;
 
         DEFINE TABLE IF NOT EXISTS class SCHEMALESS;
+        DEFINE TABLE class SCHEMALESS PERMISSIONS FULL;
         DEFINE FIELD IF NOT EXISTS name ON TABLE class TYPE string;
+        DEFINE FIELD IF NOT EXISTS description ON TABLE class TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS code ON TABLE class TYPE string;
         DEFINE FIELD IF NOT EXISTS userIds ON TABLE class TYPE array<string>;
         DEFINE FIELD IF NOT EXISTS teacherIds ON TABLE class TYPE array<string>;
+        DEFINE FIELD IF NOT EXISTS isPublic ON TABLE class TYPE bool DEFAULT false;
+        DEFINE FIELD IF NOT EXISTS accentColor ON TABLE class TYPE string DEFAULT '#3b82f6';
+        DEFINE FIELD IF NOT EXISTS pinnedLinks ON TABLE class TYPE array<object>;
+        DEFINE FIELD pinnedLinks ON TABLE class TYPE option<array<object>>;
+        UPDATE class SET pinnedLinks = [] WHERE pinnedLinks = NONE OR pinnedLinks = NULL;
+
+        DEFINE TABLE IF NOT EXISTS class_thread_post SCHEMALESS;
+        DEFINE TABLE class_thread_post SCHEMALESS PERMISSIONS FULL;
+        DEFINE FIELD IF NOT EXISTS classId ON TABLE class_thread_post TYPE string;
+        DEFINE FIELD IF NOT EXISTS userId ON TABLE class_thread_post TYPE string;
+        DEFINE FIELD IF NOT EXISTS title ON TABLE class_thread_post TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS text ON TABLE class_thread_post TYPE string;
+        DEFINE FIELD IF NOT EXISTS parentPostId ON TABLE class_thread_post TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS date ON TABLE class_thread_post TYPE datetime DEFAULT time::now();
+
+        DEFINE TABLE IF NOT EXISTS class_thread SCHEMALESS;
+        DEFINE TABLE class_thread SCHEMALESS PERMISSIONS FULL;
+        DEFINE FIELD IF NOT EXISTS classId ON TABLE class_thread TYPE string;
+        DEFINE FIELD IF NOT EXISTS userId ON TABLE class_thread TYPE string;
+        DEFINE FIELD IF NOT EXISTS title ON TABLE class_thread TYPE string;
+        DEFINE FIELD IF NOT EXISTS text ON TABLE class_thread TYPE string;
+        DEFINE FIELD IF NOT EXISTS date ON TABLE class_thread TYPE datetime DEFAULT time::now();
+
+        DEFINE TABLE IF NOT EXISTS class_thread_comment SCHEMALESS;
+        DEFINE TABLE class_thread_comment SCHEMALESS PERMISSIONS FULL;
+        DEFINE FIELD IF NOT EXISTS threadId ON TABLE class_thread_comment TYPE string;
+        DEFINE FIELD IF NOT EXISTS userId ON TABLE class_thread_comment TYPE string;
+        DEFINE FIELD parentCommentId ON TABLE class_thread_comment TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS text ON TABLE class_thread_comment TYPE string;
+        DEFINE FIELD IF NOT EXISTS date ON TABLE class_thread_comment TYPE datetime DEFAULT time::now();
+        UPDATE class_thread_comment UNSET parentCommentId WHERE parentCommentId = NULL OR parentCommentId = NONE;
 
         DEFINE TABLE IF NOT EXISTS chat SCHEMALESS;
         DEFINE FIELD IF NOT EXISTS name ON TABLE chat TYPE option<string>;
@@ -97,12 +150,17 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS userId ON TABLE message TYPE string;
 
         DEFINE TABLE IF NOT EXISTS assignment SCHEMALESS;
+        DEFINE TABLE assignment SCHEMALESS PERMISSIONS FULL;
         DEFINE FIELD IF NOT EXISTS name ON TABLE assignment TYPE string;
-        DEFINE FIELD IF NOT EXISTS due ON TABLE assignment TYPE option<datetime>;
+        DEFINE FIELD due ON TABLE assignment TYPE option<datetime>;
         DEFINE FIELD IF NOT EXISTS classId ON TABLE assignment TYPE string;
         DEFINE FIELD IF NOT EXISTS text ON TABLE assignment TYPE string;
+        DEFINE FIELD maxMark ON TABLE assignment TYPE option<int>;
+        UPDATE assignment UNSET due WHERE due = NULL OR due = NONE;
+        UPDATE assignment UNSET maxMark WHERE maxMark = NULL OR maxMark = NONE;
 
         DEFINE TABLE IF NOT EXISTS submission SCHEMALESS;
+        DEFINE TABLE submission SCHEMALESS PERMISSIONS FULL;
         DEFINE FIELD IF NOT EXISTS date ON TABLE submission TYPE datetime DEFAULT time::now();
         DEFINE FIELD IF NOT EXISTS assignmentId ON TABLE submission TYPE string;
         DEFINE FIELD IF NOT EXISTS text ON TABLE submission TYPE string;

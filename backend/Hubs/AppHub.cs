@@ -7,7 +7,9 @@ using backend.Shared;
 using backend.Shared.Models;
 using Microsoft.AspNetCore.SignalR;
 using SurrealDb.Net;
+using SurrealDb.Net.Models.Auth;
 using SurrealDb.Net.Models;
+using SurrealDb.Net.Exceptions;
 
 namespace backend.Hubs;
 
@@ -16,12 +18,14 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
     private readonly ConcurrentDictionary<string, string> connectedChats = new();
     HttpClient httpClient = new HttpClient();
     private readonly SurrealDbClient dbClient;
+    private readonly SurrealDbOptions dbOptions;
     private readonly OllamaSharp.OllamaApiClient AIClient;
     private readonly EcocashClient ecocashClient;
 
-    public AppHub(SurrealDbClient dbClient)
+    public AppHub(SurrealDbClient dbClient, SurrealDbOptions dbOptions)
     {
         this.dbClient = dbClient;
+        this.dbOptions = dbOptions;
         this.AIClient = new OllamaSharp.OllamaApiClient("http://localhost:11434/");
         this.ecocashClient = new EcocashClient("QVYPAT1icVGSxlD20aTH4ZV2SMg8bdUN");
     }
@@ -128,6 +132,11 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
     public async Task<Class> CreateClass(Class clss)
     {
         clss.code ??= new Random().Next(99999).ToString();
+        clss.isPublic ??= false;
+        clss.accentColor ??= "#3b82f6";
+        clss.teacherIds ??= [];
+        clss.userIds ??= [];
+        clss.pinnedLinks ??= [];
 
         var res = await dbClient.Create("class", new DbClass(clss));
         return res.ToBase();
@@ -175,6 +184,15 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
     {
         var res = await dbClient.Query($"SELECT * FROM user WHERE username = {username} LIMIT 1;");
         return res.GetValue<List<DbUser>>(0)?.First()?.ToBase();
+    }
+
+    public async Task<User?> GetUserFromEmail(string email)
+    {
+        var normalized = email.Trim().ToLowerInvariant();
+        var res = await dbClient.Query(
+            $"SELECT * FROM user WHERE string::lowercase(email) = {normalized} LIMIT 1;"
+        );
+        return res.GetValue<List<DbUser>>(0)?.FirstOrDefault()?.ToBase();
     }
 
     public async Task<Chat> GetChat(string id)
@@ -414,6 +432,17 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         return res!.ToBase();
     }
 
+    public async Task<List<Class>> GetPublicClasses()
+    {
+        var result = await dbClient.Query($"SELECT * FROM class WHERE isPublic = true;");
+        var classes = result.GetValue<List<DbClass>>(0);
+        if (classes is not null)
+        {
+            return classes.Select((x) => x.ToBase()).ToList();
+        }
+        return [];
+    }
+
     public async Task<Class> UpdateClassInfo(string classId, string? name, string? description)
     {
         var updates = new List<string>();
@@ -424,7 +453,7 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         if (updates.Count > 0)
         {
             var upd = string.Join(", ", updates);
-            await dbClient.RawQuery($"UPDATE class:{classId} SET {upd};");
+            await dbClient.Query($"UPDATE class:{classId} SET {upd};");
         }
         var res = await dbClient.Select<DbClass>(("class", classId));
         return res!.ToBase();
@@ -436,6 +465,141 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         await dbClient.Query($"UPDATE {id} SET userIds += {userId};");
         var res = await dbClient.Select<DbClass>(("class", classId));
         return res!.ToBase();
+    }
+
+    public async Task<Class> PromoteTeacher(string classId, string userId)
+    {
+        RecordId id = ("class", classId);
+        await dbClient.Query($"UPDATE {id} SET teacherIds += {userId}, userIds += {userId};");
+        var res = await dbClient.Select<DbClass>(("class", classId));
+        return res!.ToBase();
+    }
+
+    public Task<Class> PromoteToTeacher(string classId, string userId)
+    {
+        return PromoteTeacher(classId, userId);
+    }
+
+    public async Task<Class> SetClassVisibility(string classId, bool isPublic)
+    {
+        RecordId id = ("class", classId);
+        await dbClient.Query($"UPDATE {id} SET isPublic = {isPublic};");
+        var res = await dbClient.Select<DbClass>(("class", classId));
+        return res!.ToBase();
+    }
+
+    public async Task<Class> SetClassAccentColor(string classId, string accentColor)
+    {
+        RecordId id = ("class", classId);
+        await dbClient.Query($"UPDATE {id} SET accentColor = {accentColor};");
+        var res = await dbClient.Select<DbClass>(("class", classId));
+        return res!.ToBase();
+    }
+
+    public async Task<ClassThreadPost> CreateClassThreadPost(ClassThreadPost post)
+    {
+        post.date ??= DateTime.Now;
+        var res = await dbClient.Create("class_thread_post", new DbClassThreadPost(post));
+        return res.ToBase();
+    }
+
+    public async Task<List<ClassThreadPost>> GetClassThreadPosts(string classId)
+    {
+        var result = await dbClient.Query(
+            $"SELECT * FROM class_thread_post WHERE classId = {classId} ORDER BY date ASC;"
+        );
+        var posts = result.GetValue<List<DbClassThreadPost>>(0);
+        if (posts is not null)
+        {
+            return posts.Select((x) => x.ToBase()).ToList();
+        }
+        return [];
+    }
+
+    public async Task<ClassThread> CreateClassThread(ClassThread thread)
+    {
+        thread.date ??= DateTime.Now;
+        var res = await dbClient.Create("class_thread", new DbClassThread(thread));
+        return res.ToBase();
+    }
+
+    public async Task<ClassThread> UpdateClassThread(ClassThread thread)
+    {
+        var res = await dbClient.Update(new DbClassThread(thread));
+        return res.ToBase();
+    }
+
+    public async Task<List<ClassThread>> GetClassThreads(string classId)
+    {
+        var result = await dbClient.Query(
+            $"SELECT * FROM class_thread WHERE classId = {classId} ORDER BY date DESC;"
+        );
+        var rows = result.GetValue<List<DbClassThread>>(0);
+        if (rows is not null)
+        {
+            return rows.Select(x => x.ToBase()).ToList();
+        }
+        return [];
+    }
+
+    public async Task<ClassThreadComment> CreateClassThreadComment(ClassThreadComment comment)
+    {
+        comment.date ??= DateTime.Now;
+        var commentId = string.IsNullOrWhiteSpace(comment.id) ? Guid.NewGuid().ToString("N") : comment.id!;
+        RecordId id = ("class_thread_comment", commentId);
+
+        if (string.IsNullOrWhiteSpace(comment.parentCommentId))
+        {
+            await dbClient.Query(
+                $"CREATE {id} SET threadId = {comment.threadId}, userId = {comment.userId}, text = {comment.text}, date = {comment.date};"
+            );
+        }
+        else
+        {
+            await dbClient.Query(
+                $"CREATE {id} SET threadId = {comment.threadId}, userId = {comment.userId}, text = {comment.text}, date = {comment.date}, parentCommentId = {comment.parentCommentId};"
+            );
+        }
+
+        var created = await dbClient.Select<DbClassThreadComment>(id);
+        if (created is null)
+            throw new Exception("Thread comment create did not persist");
+        return created.ToBase();
+    }
+
+    public async Task<ClassThreadComment> UpdateClassThreadComment(ClassThreadComment comment)
+    {
+        RecordId id = ("class_thread_comment", comment.id);
+        if (string.IsNullOrWhiteSpace(comment.parentCommentId))
+        {
+            await dbClient.Query(
+                $"UPDATE {id} SET threadId = {comment.threadId}, userId = {comment.userId}, text = {comment.text}, date = {comment.date ?? DateTime.Now} UNSET parentCommentId;"
+            );
+        }
+        else
+        {
+            await dbClient.Query(
+                $"UPDATE {id} SET threadId = {comment.threadId}, userId = {comment.userId}, text = {comment.text}, date = {comment.date ?? DateTime.Now}, parentCommentId = {comment.parentCommentId};"
+            );
+        }
+
+        var res = await dbClient.Select<DbClassThreadComment>(id);
+        if (res is null)
+            throw new Exception("Thread comment update did not persist");
+        return res.ToBase();
+    }
+
+    public async Task<List<ClassThreadComment>> GetClassThreadComments(string threadId)
+    {
+        var result = await dbClient.Query(
+            $"SELECT * FROM class_thread_comment WHERE threadId = {threadId} ORDER BY date ASC;"
+        );
+        var rows = result.GetValue<List<DbClassThreadComment>>(0);
+        if (rows is not null)
+        {
+            return rows.Select(x => x.ToBase()).ToList();
+        }
+        return [];
     }
 
     public async Task<Class> RemoveStudentFromClass(string classId, string userId)
@@ -460,20 +624,105 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
     {
         RecordId id = ("class", classId);
         await dbClient.Query(
-            $"UPDATE {id} SET pinnedLinks = array::filter(pinnedLinks, (v) -> v.id != {linkId});"
+            $"UPDATE {id} SET pinnedLinks = array::filter(pinnedLinks, (v) -> v.code != {linkId});"
         );
+        var res = await dbClient.Select<DbClass>(("class", classId));
+        return res!.ToBase();
+    }
+
+    public async Task<Class> SetPinnedLinks(string classId, List<PinnedLink> links)
+    {
+        RecordId id = ("class", classId);
+        var normalized = links
+            .Where(x => !(string.IsNullOrWhiteSpace(x.title) || string.IsNullOrWhiteSpace(x.url)))
+            .Select(x => new
+            {
+                title = x.title!.Trim(),
+                url = x.url!.Trim(),
+                code = x.code ?? Guid.NewGuid().ToString(),
+            })
+            .ToList();
+        await dbClient.Query($"UPDATE {id} SET pinnedLinks = {normalized};");
         var res = await dbClient.Select<DbClass>(("class", classId));
         return res!.ToBase();
     }
 
     public async Task<Assignment> CreateAssignment(Assignment ass)
     {
-        var res = await dbClient.Create("assignment", new DbAssignment(ass));
-        return res.ToBase();
+        var assignmentId = string.IsNullOrWhiteSpace(ass.id) ? Guid.NewGuid().ToString("N") : ass.id!;
+        // Options seem to be just broken right now so I'm going to instead use this BS system
+        if (ass.due is null && ass.maxMark is null)
+        {
+            await dbClient.Query(
+                $"CREATE type::thing('assignment', {assignmentId}) SET classId = {ass.classId}, name = {ass.name}, text = {ass.text};"
+            );
+        }
+        else if (ass.due is null)
+        {
+            await dbClient.Query(
+                $"CREATE type::thing('assignment', {assignmentId}) SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, maxMark = {ass.maxMark!.Value};"
+            );
+        }
+        else if (ass.maxMark is null)
+        {
+            await dbClient.Query(
+                $"CREATE type::thing('assignment', {assignmentId}) SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, due = {ass.due.Value};"
+            );
+        }
+        else
+        {
+            await dbClient.Query(
+                $"CREATE type::thing('assignment', {assignmentId}) SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, due = {ass.due.Value}, maxMark = {ass.maxMark.Value};"
+            );
+        }
+
+        RecordId id = ("assignment", assignmentId);
+        var selected = await dbClient.Select<DbAssignment>(id);
+        if (selected is null)
+            throw new Exception("Assignment create did not persist");
+        return selected.ToBase();
+    }
+
+    public async Task<Assignment> UpdateAssignment(Assignment ass)
+    {
+        if (string.IsNullOrWhiteSpace(ass.id))
+            throw new Exception("Assignment id is required");
+        RecordId id = ("assignment", ass.id);
+        if (ass.due is null && ass.maxMark is null)
+        {
+            await dbClient.Query(
+                $"UPDATE {id} SET classId = {ass.classId}, name = {ass.name}, text = {ass.text} UNSET due, maxMark;"
+            );
+        }
+        else if (ass.due is null)
+        {
+            await dbClient.Query(
+                $"UPDATE {id} SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, maxMark = {ass.maxMark!.Value} UNSET due;"
+            );
+        }
+        else if (ass.maxMark is null)
+        {
+            await dbClient.Query(
+                $"UPDATE {id} SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, due = {ass.due.Value} UNSET maxMark;"
+            );
+        }
+        else
+        {
+            await dbClient.Query(
+                $"UPDATE {id} SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, due = {ass.due.Value}, maxMark = {ass.maxMark.Value};"
+            );
+        }
+
+        var selected = await dbClient.Select<DbAssignment>(id);
+        if (selected is null)
+            throw new Exception("Assignment update did not persist");
+        return selected.ToBase();
     }
 
     public async Task<List<Assignment>> GetAssignments(string classId)
     {
+        await dbClient.Query($"UPDATE assignment UNSET due WHERE due = NULL OR due = NONE;");
+        await dbClient.Query($"UPDATE assignment UNSET maxMark WHERE maxMark = NULL OR maxMark = NONE;");
         var result = await dbClient.Query(
             $"SELECT * FROM assignment WHERE classId = {classId} ORDER BY due ASC;"
         );
@@ -923,54 +1172,71 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         return await GetChatNameInternal(chat, userId);
     }
 
+    private sealed class AppUserAccessAuth : ScopeAuth
+    {
+        public string? email { get; set; }
+        public string? username { get; set; }
+        public string? password { get; set; }
+    }
+
     public async Task<User?> SignIn(string username, string password)
     {
-        var res = await dbClient.Query(
-            $"SELECT * FROM user WHERE username = {username} and password = {password} LIMIT 1;"
-        );
-
-        var res2 = res.GetValue<List<DbUser>>(0);
-
-        if (res2 is not null)
+        username = username.Trim().ToLowerInvariant();
+        var authClient = new SurrealDbClient(dbOptions);
+        try
         {
-            if (res2.Count > 0)
-            {
-                return res2.First().ToBase();
-            }
+            var token = await authClient.SignIn(
+                new AppUserAccessAuth
+                {
+                    Namespace = "main",
+                    Database = "main",
+                    Access = "account",
+                    username = username,
+                    password = password,
+                }
+            );
+        }
+        catch (SurrealDbException)
+        {
+            return null;
         }
 
-        return null;
+        var res = await dbClient.Query(
+            $"SELECT * FROM user WHERE string::lowercase(username) = {username} LIMIT 1;"
+        );
+        return res.GetValue<List<DbUser>>(0)?.FirstOrDefault()?.ToBase();
     }
 
     public async Task<User?> SignUp(UserInfo user)
     {
+        var username = user.username?.Trim() ?? "";
+        var email = (user.email ?? "").Trim().ToLowerInvariant();
+        var password = user.password ?? "";
+
+        var authClient = new SurrealDbClient(dbOptions);
+        try
+        {
+            var token = await authClient.SignUp(
+                new AppUserAccessAuth
+                {
+                    Namespace = "main",
+                    Database = "main",
+                    Access = "account",
+                    username = username,
+                    email = email,
+                    password = password,
+                }
+            );
+        }
+        catch (SurrealDbException)
+        {
+            return null;
+        }
+
         var res = await dbClient.Query(
-            $"SELECT * FROM user WHERE username = {user.username} and password = {user.password} LIMIT 1;"
+            $"SELECT * FROM user WHERE string::lowercase(email) = {email} LIMIT 1;"
         );
-
-        var res2 = res.GetValue<List<DbUser>>(0);
-
-        if (res2 is not null)
-        {
-            if (res2.Count > 0)
-            {
-                return res2.First().ToBase();
-            }
-        }
-
-        res = await dbClient.Query($"SELECT * FROM user WHERE username = {user.username};");
-        res2 = res.GetValue<List<DbUser>>(0);
-
-        if (res2 is not null)
-        {
-            if (res2.Count > 0)
-            {
-                return null;
-            }
-        }
-
-        var usr = await dbClient.Create("user", new DbUserInfo(user));
-        var ret_user = usr.ToBase().ToBase();
+        var ret_user = res.GetValue<List<DbUser>>(0)?.FirstOrDefault()?.ToBase();
 
         if (ret_user is not null)
         {
