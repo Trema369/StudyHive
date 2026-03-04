@@ -10,12 +10,12 @@ export function Navbar() {
     const [aiOpen, setAiOpen] = useState(false);
     return (
         <nav
-            className="w-full px-6 py-3 
+            className="fixed top-0 w-full px-6 py-3 
            flex items-center justify-between
            backdrop-blur-md
            bg-white/60 dark:bg-[#0a0a0a]/40
            border-b border-gray-300 dark:border-[#262626]
-           shadow-lg"
+           shadow-lg z-50"
         >
             {/* Left Section */}
             <div className="flex-1">

@@ -1,4 +1,5 @@
-# .NET
+ .NET
+*.db
 bin/
 obj/
 *.user
