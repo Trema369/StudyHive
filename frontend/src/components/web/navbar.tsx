@@ -29,18 +29,18 @@ export function Navbar() {
 
             {/* Center Section */}
             <div className="flex-1 flex justify-center gap-8">
-                <Link className={buttonVariants({ variant: 'ghost' })} href="/">
+                <Link className={buttonVariants({ variant: 'ghost' })} href="/contribute">
                     Contribute
                 </Link>
                 <Link
                     className={buttonVariants({ variant: 'ghost' })}
-                    href="/wateranalysis"
+                    href="/coaching"
                 >
                     Coaching
                 </Link>
                 <Link
                     className={buttonVariants({ variant: 'ghost' })}
-                    href="/plantanalysis"
+                    href="/leaderboard"
                 >
                     Leaderboard
                 </Link>
