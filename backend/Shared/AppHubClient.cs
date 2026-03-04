@@ -7,4 +7,6 @@ namespace backend.Shared;
 public interface IAppHubClient
 {
     Task ReceiveMessage(Message message);
+    Task ReceiveClassThread(ClassThread thread);
+    Task ReceiveClassThreadComment(ClassThreadComment comment);
 }

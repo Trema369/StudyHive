@@ -8,6 +8,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { splitThink } from "@/lib/chat-think";
+import { MarkdownContent } from "@/components/web/markdown-content";
+import { Button } from "../ui/button";
+import { Send } from "lucide-react";
 
 type ChatMessage = {
   parentId?: string;
@@ -15,11 +19,6 @@ type ChatMessage = {
   userId?: string;
   text?: string;
   id?: string;
-};
-
-type ThinkMessage = {
-  content: string;
-  thinking: string | null;
 };
 
 interface AIChatPopupProps {
@@ -59,29 +58,6 @@ export function AIChatPopup({ open, setOpen }: AIChatPopupProps) {
       );
       return exists ? prev : [...prev, incoming];
     });
-  };
-
-  // Kinda stolen from the AppHub
-  const splitThink = (rawText?: string): ThinkMessage => {
-    const text = rawText ?? "";
-    if (!(text.includes("<think>") && text.includes("</think>"))) {
-      return {
-        content: text,
-        thinking: null,
-      };
-    }
-
-    const splitStart = text.split("<think>");
-    const prefix = splitStart[0] ?? "";
-    const splitEnd = (splitStart[1] ?? "").split("</think>");
-    const thinking = (splitEnd[0] ?? "").trim();
-    const suffix = splitEnd[1] ?? "";
-    const content = `${prefix}${suffix}`.trim();
-
-    return {
-      content,
-      thinking: thinking.length > 0 ? thinking : null,
-    };
   };
 
   useEffect(() => {
@@ -172,9 +148,10 @@ export function AIChatPopup({ open, setOpen }: AIChatPopupProps) {
                   <div className="text-xs text-muted-foreground">
                     {m.userId ?? "Unknown"}
                   </div>
-                  <div className="text-sm whitespace-pre-wrap">
-                    {parsed.content || m.text || ""}
-                  </div>
+                  <MarkdownContent
+                    className="prose prose-sm max-w-none dark:prose-invert"
+                    content={parsed.content || m.text || ""}
+                  />
                   {parsed.thinking && (
                     <details className="mt-2 rounded-md border bg-black/30 p-2">
                       <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
@@ -204,17 +181,24 @@ export function AIChatPopup({ open, setOpen }: AIChatPopupProps) {
           ))}
         </select>
 
-        <Input
-          placeholder="Enter your message..."
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-        />
+        <div className="flex gap-2">
+          <Input
+            placeholder="Enter your message..."
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+          />
+          <Button
+            onClick={() => handleSend()}
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

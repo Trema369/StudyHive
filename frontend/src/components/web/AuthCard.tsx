@@ -11,8 +11,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Separator } from '@/components/ui/separator';
 import { setAuthUser } from '@/lib/auth';
+import Image from 'next/image';
 
 interface AuthCardProps {
     open: boolean;
@@ -81,6 +81,16 @@ export function AuthCard({ open, setOpen }: AuthCardProps) {
             <DialogContent className="sm:max-w-md p-6 space-y-4">
                 {/* Header */}
                 <DialogHeader className="relative text-center">
+                    <div className="mx-auto mb-2">
+                        <Image
+                            src="/icon.png"
+                            alt="StudyHive icon"
+                            width={40}
+                            height={40}
+                            className="h-10 w-10 rounded-md"
+                            priority
+                        />
+                    </div>
                     <DialogTitle className="text-2xl font-bold text-center">
                         Log in or Sign up
                     </DialogTitle>

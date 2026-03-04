@@ -34,6 +34,7 @@ public class Assignment
     public DateTime? due { get; set; }
     public string? text { get; set; }
     public int? maxMark { get; set; }
+    public List<Attachment>? attachments { get; set; }
     public string? id { get; set; }
 
     public Assignment() { }
@@ -58,6 +59,7 @@ public class ClassThread
     public string? userId { get; set; }
     public string? title { get; set; }
     public string? text { get; set; }
+    public List<Attachment>? attachments { get; set; }
     public DateTime? date { get; set; }
     public string? id { get; set; }
 }
@@ -68,6 +70,7 @@ public class ClassThreadComment
     public string? userId { get; set; }
     public string? parentCommentId { get; set; }
     public string? text { get; set; }
+    public List<Attachment>? attachments { get; set; }
     public DateTime? date { get; set; }
     public string? id { get; set; }
 }
@@ -78,6 +81,7 @@ public class Submission
     public DateTime? date { get; set; }
     public string? userId { get; set; }
     public string? text { get; set; }
+    public List<Attachment>? attachments { get; set; }
     public int? mark { get; set; }
     public string? id { get; set; }
 

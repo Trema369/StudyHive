@@ -11,7 +11,10 @@ import {
   DialogOverlay,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DoorOpen } from "lucide-react";
 import { AuthUser, getAuthUser } from "@/lib/auth";
+import { MarkdownContent } from "@/components/web/markdown-content";
+import { MarkdownEditor } from "@/components/web/markdown-editor";
 
 export type ClassItem = {
   id?: string;
@@ -49,6 +52,7 @@ export default function ClassesPage() {
   const [dialogMode, setDialogMode] = useState<"create" | "join">("create");
 
   const loadData = async () => {
+    if (!userId) return;
     const [myClasses, publicClasses] = await Promise.all([
       fetch(`${API_BASE}/api/classes/user/${userId}`),
       fetch(`${API_BASE}/api/classes/public`),
@@ -80,10 +84,9 @@ export default function ClassesPage() {
 
   useEffect(() => {
     if (!userId) {
-      setClasses([]);
       return;
     }
-    void loadData();
+    loadData();
   }, [userId]);
 
   const createClass = async () => {
@@ -114,29 +117,58 @@ export default function ClassesPage() {
     await loadData();
   };
 
-  const joinClass = async () => {
+  const joinClass = async (codeOverride?: string) => {
     setStatus("");
     if (!userId) {
       setStatus("Sign in to join classes");
       return;
     }
 
+    const codeToUse = (codeOverride ?? joinCode).trim();
+    if (!codeToUse) {
+      setStatus("Enter a valid signup code");
+      return;
+    }
+
     const res = await fetch(`${API_BASE}/api/classes/join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, code: joinCode }),
+      body: JSON.stringify({ userId, code: codeToUse }),
     });
 
     if (res.ok) {
       setJoinCode("");
       setDialogOpen(false);
+    } else {
+      const payload = (await res.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+      setStatus(payload?.message ?? "Unable to join class");
     }
 
     await loadData();
   };
 
+  const joinPublicClass = async (classId: string) => {
+    setStatus("");
+    if (!userId || !classId) return;
+    const res = await fetch(`${API_BASE}/api/classes/${classId}/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    });
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+      setStatus(payload?.message ?? "Unable to join class");
+      return;
+    }
+    await loadData();
+  };
+
   return (
-    <main className="mx-auto max-w-6xl p-6 space-y-6 py-30">
+    <main className="mx-auto max-w-6xl min-h-screen overflow-y-auto p-6 space-y-6 py-30">
       <section className="rounded-lg border p-4 space-y-3">
         <h1 className="text-3xl font-semibold">Colonies</h1>
         <div className="flex gap-2">
@@ -177,9 +209,10 @@ export default function ClassesPage() {
               }}
             >
               <h3 className="font-medium">{clss.name ?? "Untitled class"}</h3>
-              <p className="text-sm text-muted-foreground">
-                {clss.description ?? "No description"}
-              </p>
+              <MarkdownContent
+                className="prose prose-sm max-w-none text-muted-foreground dark:prose-invert"
+                content={clss.description ?? "No description"}
+              />
               <p className="text-xs text-muted-foreground mt-2">
                 {clss.isPublic ? "Public" : "Private"} | Code:{" "}
                 {clss.code ?? "none"}
@@ -192,25 +225,37 @@ export default function ClassesPage() {
       <section className="rounded-lg border p-4 space-y-3">
         <h2 className="text-xl font-medium">Discover public colonies</h2>
         <div className="grid gap-3 md:grid-cols-2">
-          {publicClasses.map((clss) => (
-            <div key={clss.id} className="rounded-lg border p-3">
-              <h3 className="font-medium">{clss.name ?? "Untitled class"}</h3>
-              <p className="text-sm text-muted-foreground">
-                {clss.description ?? "No description"}
-              </p>
-              <div className="mt-2 flex gap-2">
-                <Button size="sm" onClick={() => void joinClass(clss.id ?? "")}>
-                  Join
-                </Button>
-                <Link
-                  href={`/classes/${clss.id}`}
-                  className="text-sm underline mt-2"
-                >
-                  Open
-                </Link>
-              </div>
-            </div>
-          ))}
+          {(() => {
+            const joinedIds = new Set(classes.map((x) => x.id).filter(Boolean));
+            return publicClasses.map((clss) => {
+              const alreadyJoined = !!clss.id && joinedIds.has(clss.id);
+              return (
+                <div key={clss.id} className="rounded-lg border p-3">
+                  <h3 className="font-medium">{clss.name ?? "Untitled class"}</h3>
+                  <MarkdownContent
+                    className="prose prose-sm max-w-none text-muted-foreground dark:prose-invert"
+                    content={clss.description ?? "No description"}
+                  />
+                  <div className="mt-2 flex gap-2">
+                    {!alreadyJoined && (
+                      <Button
+                        size="sm"
+                        onClick={() => void joinPublicClass(clss.id ?? "")}
+                      >
+                        Join
+                      </Button>
+                    )}
+                    <Link
+                      href={`/classes/${clss.id}`}
+                      className="text-sm underline mt-2"
+                    >
+                      <DoorOpen className="h-4 w-4" />
+                    </Link>
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
       </section>
 
@@ -230,10 +275,11 @@ export default function ClassesPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
-              <Input
+              <MarkdownEditor
                 placeholder="Description"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={setDescription}
+                minRows={5}
               />
               <div className="flex items-center gap-2">
                 <label className="text-sm">Accent</label>

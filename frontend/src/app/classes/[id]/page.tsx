@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { useParams } from "next/navigation";
+import * as signalR from "@microsoft/signalr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,16 +15,34 @@ import {
 } from "@/components/ui/dialog";
 import { ClassItem, PinnedLink } from "@/app/classes/page";
 import { getAuthUser } from "@/lib/auth";
+import { splitThink } from "@/lib/chat-think";
+import { MarkdownContent } from "@/components/web/markdown-content";
+import { MarkdownEditor } from "@/components/web/markdown-editor";
+import { Attachment, uploadFile } from "@/lib/uploads";
+import { AttachmentPreview } from "@/components/web/attachment-preview";
+import { Paperclip, CirclePlus, MessageCircle, Reply, Save, Edit, Send, X} from "lucide-react";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5082";
 
+async function readJsonSafe<T>(res: Response, fallback: T): Promise<T> {
+  const raw = await res.text();
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 type ClassTab = "chat" | "threads" | "people" | "work" | "settings";
 type ChatMessage = {
   parentId?: string;
+  parentMessageId?: string;
   date?: string;
   userId?: string;
   text?: string;
+  attachments?: Attachment[];
   id?: string;
 };
 
@@ -44,6 +63,7 @@ type ClassThread = {
   userId?: string;
   title?: string;
   text?: string;
+  attachments?: Attachment[];
   date?: string;
 };
 
@@ -53,6 +73,7 @@ type ClassThreadComment = {
   userId?: string;
   parentCommentId?: string;
   text?: string;
+  attachments?: Attachment[];
   date?: string;
 };
 
@@ -63,6 +84,7 @@ type Assignment = {
   text?: string;
   due?: string;
   maxMark?: number;
+  attachments?: Attachment[];
 };
 
 type Submission = {
@@ -71,6 +93,7 @@ type Submission = {
   userId?: string;
   text?: string;
   date?: string;
+  attachments?: Attachment[];
   mark?: number;
 };
 
@@ -80,6 +103,9 @@ export default function ClassDetailPage() {
     ? (params.id[0] ?? "")
     : (params.id ?? "");
   const chatParentId = `class-chat-${classId}`;
+  const streamFileInputRef = useRef<HTMLInputElement | null>(null);
+  const classConnectionRef = useRef<signalR.HubConnection | null>(null);
+  const selectedThreadIdRef = useRef("");
 
   const [tab, setTab] = useState<ClassTab>("threads");
   const [userId, setUserId] = useState("");
@@ -103,6 +129,7 @@ export default function ClassDetailPage() {
   const [threadDialogOpen, setThreadDialogOpen] = useState(false);
   const [threadTitle, setThreadTitle] = useState("");
   const [threadBody, setThreadBody] = useState("");
+  const [threadAttachments, setThreadAttachments] = useState<Attachment[]>([]);
 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [assignmentDialogOpen, setAssignmentDialogOpen] = useState(false);
@@ -110,6 +137,9 @@ export default function ClassDetailPage() {
   const [newAssignmentText, setNewAssignmentText] = useState("");
   const [newAssignmentDue, setNewAssignmentDue] = useState("");
   const [newAssignmentMaxMark, setNewAssignmentMaxMark] = useState("100");
+  const [newAssignmentAttachments, setNewAssignmentAttachments] = useState<
+    Attachment[]
+  >([]);
   const [editingAssignmentId, setEditingAssignmentId] = useState<string>("");
   const [editAssignmentName, setEditAssignmentName] = useState("");
   const [editAssignmentText, setEditAssignmentText] = useState("");
@@ -119,11 +149,26 @@ export default function ClassDetailPage() {
     Record<string, Submission[]>
   >({});
   const [markInput, setMarkInput] = useState<Record<string, string>>({});
+  const [showSubmissionComposerByAssignment, setShowSubmissionComposerByAssignment] =
+    useState<Record<string, boolean>>({});
   const [submissionText, setSubmissionText] = useState<Record<string, string>>(
     {},
   );
+  const [submissionAttachments, setSubmissionAttachments] = useState<
+    Record<string, Attachment[]>
+  >({});
+  const [editingSubmissionId, setEditingSubmissionId] = useState<
+    Record<string, string>
+  >({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
+  const [replyToChatMessageId, setReplyToChatMessageId] = useState("");
+  const [chatPendingAttachments, setChatPendingAttachments] = useState<
+    Attachment[]
+  >([]);
+  const [uploading, setUploading] = useState(false);
+  const [aiModels, setAiModels] = useState<string[]>([]);
+  const [selectedAiModel, setSelectedAiModel] = useState("ministral");
 
   const [settingsName, setSettingsName] = useState("");
   const [settingsDescription, setSettingsDescription] = useState("");
@@ -150,7 +195,8 @@ export default function ClassDetailPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids }),
     });
-    const users = (await res.json()) as ResolvedUser[];
+    if (!res.ok) return;
+    const users = await readJsonSafe<ResolvedUser[]>(res, []);
     setUserMap((prev) => {
       const next = { ...prev };
       for (const u of users) {
@@ -162,7 +208,8 @@ export default function ClassDetailPage() {
 
   const loadPeople = async () => {
     const res = await fetch(`${API_BASE}/api/classes/${classId}/people`);
-    const ppl = (await res.json()) as ClassPerson[];
+    if (!res.ok) return;
+    const ppl = await readJsonSafe<ClassPerson[]>(res, []);
     setPeople(ppl);
     setUserMap((prev) => {
       const next = { ...prev };
@@ -175,7 +222,9 @@ export default function ClassDetailPage() {
 
   const loadClass = async () => {
     const res = await fetch(`${API_BASE}/api/classes/${classId}`);
-    const nextClass = (await res.json()) as ClassItem;
+    if (!res.ok) return;
+    const nextClass = await readJsonSafe<ClassItem | null>(res, null);
+    if (!nextClass) return;
     setClass(nextClass);
     setSettingsName(nextClass.name ?? "");
     setSettingsDescription(nextClass.description ?? "");
@@ -187,7 +236,8 @@ export default function ClassDetailPage() {
   const loadThreads = async () => {
     if (!classId) return;
     const res = await fetch(`${API_BASE}/api/classes/${classId}/threads`);
-    const rows = (await res.json()) as ClassThread[];
+    if (!res.ok) return;
+    const rows = await readJsonSafe<ClassThread[]>(res, []);
     setThreads(rows);
     await resolveUsernames(rows.map((x) => x.userId ?? ""));
     if (rows.length === 0) {
@@ -203,7 +253,8 @@ export default function ClassDetailPage() {
     const res = await fetch(
       `${API_BASE}/api/classes/threads/${threadId}/comments`,
     );
-    const rows = (await res.json()) as ClassThreadComment[];
+    if (!res.ok) return;
+    const rows = await readJsonSafe<ClassThreadComment[]>(res, []);
     setThreadComments(rows);
     setCollapsedComments({});
     setOpenReplyEditors({});
@@ -214,7 +265,8 @@ export default function ClassDetailPage() {
     const assRes = await fetch(
       `${API_BASE}/api/classes/${classId}/assignments`,
     );
-    const list = (await assRes.json()) as Assignment[];
+    if (!assRes.ok) return;
+    const list = await readJsonSafe<Assignment[]>(assRes, []);
     setAssignments(list);
 
     const subPairs = await Promise.all(
@@ -224,7 +276,9 @@ export default function ClassDetailPage() {
           const res = await fetch(
             `${API_BASE}/api/classes/assignments/${x.id}/submissions`,
           );
-          const items = res.ok ? ((await res.json()) as Submission[]) : [];
+          const items = res.ok
+            ? await readJsonSafe<Submission[]>(res, [])
+            : [];
           return [x.id as string, items] as const;
         }),
     );
@@ -240,9 +294,20 @@ export default function ClassDetailPage() {
   const loadChat = async () => {
     const res = await fetch(`${API_BASE}/api/chat/${chatParentId}/messages`);
     if (!res.ok) return;
-    const rows = (await res.json()) as ChatMessage[];
+    const rows = await readJsonSafe<ChatMessage[]>(res, []);
     setChatMessages(rows);
     await resolveUsernames(rows.map((x) => x.userId ?? ""));
+  };
+
+  const loadAiModels = async () => {
+    const res = await fetch(`${API_BASE}/api/chat/ai/models`);
+    if (!res.ok) return;
+    const models = await readJsonSafe<string[]>(res, []);
+    if (models.length === 0) return;
+    setAiModels(models);
+    if (!models.includes(selectedAiModel)) {
+      setSelectedAiModel(models[0]);
+    }
   };
 
   useEffect(() => {
@@ -263,10 +328,92 @@ export default function ClassDetailPage() {
     void loadThreads();
     void loadAssignments();
     void loadChat();
+    void loadAiModels();
   }, [classId, userId]);
 
   useEffect(() => {
     void loadThreadComments(selectedThreadId);
+  }, [selectedThreadId]);
+
+  useEffect(() => {
+    selectedThreadIdRef.current = selectedThreadId;
+  }, [selectedThreadId]);
+
+  useEffect(() => {
+    if (!classId) return;
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl(`${API_BASE}/apphub`, { withCredentials: false })
+      .withAutomaticReconnect()
+      .build();
+    classConnectionRef.current = connection;
+    let cancelled = false;
+
+    connection.on("ReceiveMessage", (message: ChatMessage) => {
+      if (message.parentId !== chatParentId) return;
+      setChatMessages((prev) => {
+        if (message.id && prev.some((x) => x.id === message.id)) return prev;
+        return [...prev, message];
+      });
+    });
+
+    connection.on("ReceiveClassThread", (thread: ClassThread) => {
+      if (thread.classId !== classId) return;
+      setThreads((prev) => {
+        if (thread.id && prev.some((x) => x.id === thread.id)) return prev;
+        return [thread, ...prev];
+      });
+    });
+
+    connection.on("ReceiveClassThreadComment", (comment: ClassThreadComment) => {
+      if (comment.threadId !== selectedThreadIdRef.current) return;
+      setThreadComments((prev) => {
+        if (comment.id && prev.some((x) => x.id === comment.id)) return prev;
+        return [...prev, comment];
+      });
+    });
+
+    const start = async () => {
+      try {
+        await connection.start();
+        if (cancelled) return;
+        await connection.invoke("ConnectToChat", chatParentId);
+        await connection.invoke("ConnectToChat", `class-threads-${classId}`);
+      } catch (err) {
+        // TODO Come up with a better way of dealing with this, kinda sketchy ngl
+        const message =
+          err instanceof Error ? err.message : String(err ?? "");
+        const isExpectedRace =
+          cancelled ||
+          message.includes("before stop() was called") ||
+          message.includes("before the hub handshake could complete") ||
+          message.includes("stopped during negotiation");
+        if (!isExpectedRace) {
+          console.debug("Class hub start interrupted:", err);
+        }
+      }
+    };
+    void start();
+
+    return () => {
+      cancelled = true;
+      connection.off("ReceiveMessage");
+      connection.off("ReceiveClassThread");
+      connection.off("ReceiveClassThreadComment");
+      void connection.stop().catch(() => {
+      });
+      classConnectionRef.current = null;
+    };
+  }, [classId, chatParentId]);
+
+  useEffect(() => {
+    const connection = classConnectionRef.current;
+    if (!connection || !selectedThreadId) return;
+    if (connection.state !== signalR.HubConnectionState.Connected) return;
+
+    void connection
+      .invoke("ConnectToChat", `thread-comments-${selectedThreadId}`)
+      .catch(() => {
+      });
   }, [selectedThreadId]);
 
   useEffect(() => {
@@ -289,9 +436,12 @@ export default function ClassDetailPage() {
         userId,
         title: threadTitle.trim(),
         text: threadBody.trim(),
+        attachments: threadAttachments,
       }),
     });
-    const created = (await res.json()) as ClassThread;
+    if (!res.ok) return;
+    const created = await readJsonSafe<ClassThread | null>(res, null);
+    if (!created) return;
     setThreads((prev) => {
       if (created.id && prev.some((x) => x.id === created.id)) return prev;
       return [created, ...prev];
@@ -302,6 +452,7 @@ export default function ClassDetailPage() {
     setThreadDialogOpen(false);
     setThreadTitle("");
     setThreadBody("");
+    setThreadAttachments([]);
     await loadThreads();
   };
 
@@ -327,18 +478,31 @@ export default function ClassDetailPage() {
   };
 
   const sendClassMessage = async () => {
-    if (!userId || !chatInput.trim()) return;
+    if (!userId || (!chatInput.trim() && chatPendingAttachments.length === 0))
+      return;
+    const text = chatInput.trim();
     await fetch(`${API_BASE}/api/chat/message`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         parentId: chatParentId,
+        parentMessageId: replyToChatMessageId || undefined,
         userId,
-        text: chatInput.trim(),
+        text,
+        attachments: chatPendingAttachments,
         date: new Date().toISOString(),
       }),
     });
+    if (text.includes("@AI")) {
+      await fetch(`${API_BASE}/api/chat/${chatParentId}/ai`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: selectedAiModel }),
+      });
+    }
     setChatInput("");
+    setReplyToChatMessageId("");
+    setChatPendingAttachments([]);
     await loadChat();
   };
 
@@ -356,6 +520,7 @@ export default function ClassDetailPage() {
           ? new Date(newAssignmentDue).toISOString()
           : undefined,
         maxMark: Number(newAssignmentMaxMark),
+        attachments: newAssignmentAttachments,
       }),
     });
     setAssignmentDialogOpen(false);
@@ -363,6 +528,7 @@ export default function ClassDetailPage() {
     setNewAssignmentText("");
     setNewAssignmentDue("");
     setNewAssignmentMaxMark("100");
+    setNewAssignmentAttachments([]);
     await loadAssignments();
   };
 
@@ -404,17 +570,60 @@ export default function ClassDetailPage() {
   const submitAssignment = async (assignmentId: string) => {
     if (!userId) return;
     const text = submissionText[assignmentId];
-    if (!text?.trim()) return;
+    const files = submissionAttachments[assignmentId] ?? [];
+    if (!text?.trim() && files.length === 0) return;
+    const submissionId = editingSubmissionId[assignmentId];
     await fetch(
       `${API_BASE}/api/classes/assignments/${assignmentId}/submissions`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, text }),
+        body: JSON.stringify({
+          id: submissionId || undefined,
+          userId,
+          text,
+          attachments: files,
+        }),
       },
     );
     setSubmissionText((prev) => ({ ...prev, [assignmentId]: "" }));
+    setSubmissionAttachments((prev) => ({ ...prev, [assignmentId]: [] }));
+    setEditingSubmissionId((prev) => ({ ...prev, [assignmentId]: "" }));
     await loadAssignments();
+  };
+
+  const startEditSubmission = (assignmentId: string, sub: Submission) => {
+    setEditingSubmissionId((prev) => ({ ...prev, [assignmentId]: sub.id ?? "" }));
+    setSubmissionText((prev) => ({ ...prev, [assignmentId]: sub.text ?? "" }));
+    setSubmissionAttachments((prev) => ({
+      ...prev,
+      [assignmentId]: sub.attachments ?? [],
+    }));
+  };
+
+  const cancelEditSubmission = (assignmentId: string) => {
+    setEditingSubmissionId((prev) => ({ ...prev, [assignmentId]: "" }));
+    setSubmissionText((prev) => ({ ...prev, [assignmentId]: "" }));
+    setSubmissionAttachments((prev) => ({ ...prev, [assignmentId]: [] }));
+  };
+
+  const uploadAttachments = async (
+    files: FileList | null,
+    onDone: (attachments: Attachment[]) => void,
+  ) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const uploaded = await Promise.all(
+        Array.from(files).map((f) => uploadFile(API_BASE, f)),
+      );
+      onDone(uploaded);
+    } catch (err) {
+      // Why does this keep braking on me....
+      console.error(err);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const setMark = async (submissionId: string, mark: number) => {
@@ -462,6 +671,26 @@ export default function ClassDetailPage() {
       new Date(a.date ?? "").getTime() - new Date(b.date ?? "").getTime(),
   );
 
+  const chatMessageById = useMemo(() => {
+    const map: Record<string, ChatMessage> = {};
+    for (const m of chatMessages) {
+      if (m.id) map[m.id] = m;
+    }
+    return map;
+  }, [chatMessages]);
+
+  const resolveReplyTarget = (parentMessageId?: string) => {
+    if (!parentMessageId) return null;
+    if (chatMessageById[parentMessageId]) return chatMessageById[parentMessageId];
+    const shortId = parentMessageId.includes(":")
+      ? parentMessageId.split(":").pop() ?? parentMessageId
+      : parentMessageId;
+    if (chatMessageById[shortId]) return chatMessageById[shortId];
+    const prefixed = `message:${parentMessageId}`;
+    if (chatMessageById[prefixed]) return chatMessageById[prefixed];
+    return null;
+  };
+
   const commentsByParent = useMemo(() => {
     const groups: Record<string, ClassThreadComment[]> = {};
     for (const c of threadComments) {
@@ -484,15 +713,16 @@ export default function ClassDetailPage() {
   );
 
   return (
-    <main className="mx-auto max-w-6xl p-6 space-y-6 py-30">
+    <main className="mx-auto max-w-6xl min-h-screen overflow-y-auto p-6 space-y-6 py-30">
       <section
         className="rounded-lg border p-4 space-y-2"
         style={{ borderTop: `6px solid ${clss?.accentColor ?? "#3b82f6"}` }}
       >
         <h1 className="text-3xl font-semibold">{clss?.name ?? "Colony"}</h1>
-        <p className="text-muted-foreground">
-          {clss?.description ?? "No description"}
-        </p>
+        <MarkdownContent
+          className="prose prose-sm max-w-none text-muted-foreground dark:prose-invert"
+          content={clss?.description ?? "No description"}
+        />
         {pinnedLinks.length > 0 && (
           <div className="space-y-1">
             {pinnedLinks.map((link) => (
@@ -553,7 +783,7 @@ export default function ClassDetailPage() {
               onClick={() => setThreadDialogOpen(true)}
               disabled={!userId}
             >
-              New
+              <CirclePlus className="h-4 w-4" />
             </Button>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -595,9 +825,11 @@ export default function ClassDetailPage() {
                       ? new Date(selectedThread.date).toLocaleString()
                       : ""}
                   </div>
-                  <p className="text-sm whitespace-pre-wrap">
-                    {selectedThread.text}
-                  </p>
+                  <MarkdownContent
+                    className="prose prose-sm max-w-none dark:prose-invert"
+                    content={selectedThread.text}
+                  />
+                  <AttachmentPreview attachments={selectedThread.attachments} />
 
                   {!openReplyEditors.__root__ ? (
                     <Button
@@ -610,20 +842,22 @@ export default function ClassDetailPage() {
                       }
                       disabled={!userId}
                     >
-                      Add comment
+                      <MessageCircle className="h-4 w-4" />
                     </Button>
                   ) : (
-                    <div className="flex gap-2">
-                      <Input
+                    <div className="space-y-2">
+                      <MarkdownEditor
                         placeholder="Write a comment..."
                         value={replyText["__root__"] ?? ""}
-                        onChange={(e) =>
+                        onChange={(value) =>
                           setReplyText((prev) => ({
                             ...prev,
-                            __root__: e.target.value,
+                            __root__: value,
                           }))
                         }
+                        minRows={3}
                       />
+                      <div className="flex gap-2">
                       <Button
                         onClick={() => void createComment()}
                         disabled={!userId}
@@ -639,8 +873,9 @@ export default function ClassDetailPage() {
                           }))
                         }
                       >
-                        Cancel
+                        <X className="h-4 w-4" />
                       </Button>
+                      </div>
                     </div>
                   )}
 
@@ -672,18 +907,111 @@ export default function ClassDetailPage() {
         <section className="rounded-lg border p-4 space-y-3">
           <h2 className="text-xl font-medium">Stream</h2>
           <div className="h-80 overflow-y-auto rounded-md border p-3 space-y-2">
-            {orderedChat.map((m, idx) => (
-              <div
-                key={m.id ?? `${idx}-${m.userId}-${m.date}`}
-                className="rounded-md border p-2"
-              >
-                <div className="text-xs text-muted-foreground">
-                  {displayName(m.userId)}
+            {orderedChat.map((m, idx) => {
+              const parsed = splitThink(m.text);
+              const replyTarget = resolveReplyTarget(m.parentMessageId);
+              return (
+                <div
+                  key={m.id ?? `${idx}-${m.userId}-${m.date}`}
+                  className="rounded-md border p-2"
+                >
+                  <div className="text-xs text-muted-foreground">
+                    {displayName(m.userId)}
+                  </div>
+                  {m.parentMessageId && replyTarget && (
+                      <div className="mb-2 rounded border-l-4 border-muted-foreground/40 bg-muted/40 p-2 text-xs text-muted-foreground">
+                        Replying to {displayName(replyTarget.userId)}:{" "}
+                        {(
+                          splitThink(replyTarget.text).content ||
+                          replyTarget.text ||
+                          ""
+                        ).slice(0, 120)}
+                      </div>
+                    )}
+                  <MarkdownContent
+                    className="prose prose-sm max-w-none dark:prose-invert"
+                    content={parsed.content || m.text}
+                  />
+                  <AttachmentPreview attachments={m.attachments} />
+                  <div className="mt-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setReplyToChatMessageId(m.id ?? "")}
+                    >
+                      <Reply className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {m.userId === "AI" && parsed.thinking && (
+                    <details className="mt-2 rounded-md border bg-black/30 p-2">
+                      <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                        Show thinking
+                      </summary>
+                      <div className="mt-2 text-xs whitespace-pre-wrap text-muted-foreground">
+                        {parsed.thinking}
+                      </div>
+                    </details>
+                  )}
                 </div>
-                <div className="text-sm whitespace-pre-wrap">{m.text}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
+          {chatInput.includes("@AI") && (
+            <div className="rounded-md border p-2">
+              <label className="text-xs text-muted-foreground">AI model</label>
+              <select
+                value={selectedAiModel}
+                onChange={(e) => setSelectedAiModel(e.target.value)}
+                className="mt-1 w-full rounded-md border bg-background p-2 text-sm"
+              >
+                {aiModels.length === 0 && (
+                  <option value="ministral">ministral</option>
+                )}
+                {aiModels.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {replyToChatMessageId && chatMessageById[replyToChatMessageId] && (
+            <div className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
+              Replying to {displayName(chatMessageById[replyToChatMessageId].userId)}:{" "}
+              {(
+                splitThink(chatMessageById[replyToChatMessageId].text).content ||
+                chatMessageById[replyToChatMessageId].text ||
+                ""
+              ).slice(0, 120)}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-2 h-auto px-2 py-0 text-xs"
+                onClick={() => setReplyToChatMessageId("")}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+          <input
+            ref={streamFileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) =>
+              void uploadAttachments(e.target.files, (rows) =>
+                setChatPendingAttachments((prev) => [...prev, ...rows]),
+              )
+            }
+          />
+          <AttachmentPreview
+            attachments={chatPendingAttachments}
+            onRemove={(index) =>
+              setChatPendingAttachments((prev) =>
+                prev.filter((_, i) => i !== index),
+              )
+            }
+          />
           <div className="flex gap-2">
             <Input
               placeholder="Send a message..."
@@ -696,8 +1024,20 @@ export default function ClassDetailPage() {
                 }
               }}
             />
-            <Button onClick={() => void sendClassMessage()} disabled={!userId}>
-              Send
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              onClick={() => streamFileInputRef.current?.click()}
+              title="Attach files"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <Button
+              onClick={() => void sendClassMessage()}
+              disabled={!userId || uploading}
+            >
+              <Send className="h-4 w-4" />
             </Button>
           </div>
         </section>
@@ -752,7 +1092,7 @@ export default function ClassDetailPage() {
               onClick={() => setAssignmentDialogOpen(true)}
               disabled={!userId}
             >
-              New
+              <CirclePlus className="h-4 w-4" />
             </Button>)}
           </div>
 
@@ -764,10 +1104,11 @@ export default function ClassDetailPage() {
                 value={editAssignmentName}
                 onChange={(e) => setEditAssignmentName(e.target.value)}
               />
-              <Input
+              <MarkdownEditor
                 placeholder="Assignment details"
                 value={editAssignmentText}
-                onChange={(e) => setEditAssignmentText(e.target.value)}
+                onChange={setEditAssignmentText}
+                minRows={6}
               />
               <Input
                 type="datetime-local"
@@ -780,7 +1121,7 @@ export default function ClassDetailPage() {
                 onChange={(e) => setEditAssignmentMaxMark(e.target.value)}
               />
               <div className="flex gap-2">
-                <Button onClick={saveEditAssignment}>Save</Button>
+                <Button onClick={saveEditAssignment}><Save className="h-4 w-4" /></Button>
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -791,7 +1132,7 @@ export default function ClassDetailPage() {
                     setEditAssignmentMaxMark("100");
                   }}
                 >
-                  Cancel
+                  <X className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -806,9 +1147,21 @@ export default function ClassDetailPage() {
             {assignments.map((assignment) => {
               const submissions =
                 submissionsByAssignment[assignment.id ?? ""] ?? [];
+              const isSubmissionFromTeacher = (submissionUserId?: string) =>
+                !!submissionUserId && !!clss?.teacherIds?.includes(submissionUserId);
               const visibleSubs = isTeacher
                 ? submissions
-                : submissions.filter((s) => s.userId === userId);
+                : submissions.filter(
+                    (s) =>
+                      s.userId === userId ||
+                      (!!s.userId && !!clss?.teacherIds?.includes(s.userId)),
+                  );
+              const canEditSubmission = (sub: Submission) => {
+                if (!sub.id || !sub.userId || sub.userId !== userId) return false;
+                if (isSubmissionFromTeacher(sub.userId)) return true;
+                if (!assignment.due) return true;
+                return new Date().getTime() <= new Date(assignment.due).getTime();
+              };
 
               return (
                 <div
@@ -816,7 +1169,11 @@ export default function ClassDetailPage() {
                   className="rounded-md border p-3 space-y-2"
                 >
                   <h3 className="font-medium">{assignment.name}</h3>
-                  <p className="text-sm">{assignment.text}</p>
+                  <MarkdownContent
+                    className="prose prose-sm max-w-none dark:prose-invert"
+                    content={assignment.text}
+                  />
+                  <AttachmentPreview attachments={assignment.attachments} />
                   <p className="text-xs text-muted-foreground">
                     Due:{" "}
                     {assignment.due
@@ -830,41 +1187,116 @@ export default function ClassDetailPage() {
                       variant="outline"
                       onClick={() => startEditAssignment(assignment)}
                     >
-                      Edit assignment
+                      <Edit className="h-4 w-4" />
                     </Button>
                   )}
 
-                  {!isTeacher && (
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Your submission..."
+                  <details
+                    open={!!showSubmissionComposerByAssignment[assignment.id ?? ""]}
+                    onToggle={(e) => {
+                      const isOpen = (e.currentTarget as HTMLDetailsElement).open;
+                      setShowSubmissionComposerByAssignment((prev) => ({
+                        ...prev,
+                        [assignment.id ?? ""]: isOpen,
+                      }));
+                    }}
+                    className="rounded-md border p-2"
+                  >
+                    <summary className="cursor-pointer text-sm font-medium">
+                      {isTeacher ? "New teacher submission" : "New submission"}
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                      <MarkdownEditor
+                        placeholder={
+                          isTeacher
+                            ? "Post a teacher submission..."
+                            : "Your submission..."
+                        }
                         value={submissionText[assignment.id ?? ""] ?? ""}
-                        onChange={(e) =>
+                        onChange={(value) =>
                           setSubmissionText((prev) => ({
                             ...prev,
-                            [assignment.id ?? ""]: e.target.value,
+                            [assignment.id ?? ""]: value,
                           }))
                         }
+                        minRows={4}
+                        className="w-full"
                       />
-                      <Button
-                        onClick={() =>
-                          void submitAssignment(assignment.id ?? "")
-                        }
-                        disabled={!userId}
-                      >
-                        Submit
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Input
+                          type="file"
+                          multiple
+                          onChange={(e) =>
+                            void uploadAttachments(e.target.files, (rows) =>
+                              setSubmissionAttachments((prev) => ({
+                                ...prev,
+                                [assignment.id ?? ""]: [
+                                  ...(prev[assignment.id ?? ""] ?? []),
+                                  ...rows,
+                                ],
+                              })),
+                            )
+                          }
+                          className="min-w-56 flex-1"
+                        />
+                        <Button
+                          onClick={() => void submitAssignment(assignment.id ?? "")}
+                          disabled={!userId || uploading}
+                        >
+                          {editingSubmissionId[assignment.id ?? ""]
+                            ? <Save className="h-4 w-4" />
+                            : <Send className="h-4 w-4" />}
+                        </Button>
+                        {!!editingSubmissionId[assignment.id ?? ""] && (
+                          <Button
+                            variant="outline"
+                            onClick={() => cancelEditSubmission(assignment.id ?? "")}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  </details>
+                  <AttachmentPreview
+                    attachments={submissionAttachments[assignment.id ?? ""]}
+                    onRemove={(index) =>
+                      setSubmissionAttachments((prev) => ({
+                        ...prev,
+                        [assignment.id ?? ""]: (
+                          prev[assignment.id ?? ""] ?? []
+                        ).filter((_, i) => i !== index),
+                      }))
+                    }
+                  />
 
                   <div className="space-y-2">
                     {visibleSubs.map((sub) => (
                       <div key={sub.id} className="rounded-md border p-2">
-                        <div className="text-sm">{sub.text}</div>
+                        <MarkdownContent
+                          className="prose prose-sm max-w-none dark:prose-invert"
+                          content={sub.text}
+                        />
+                        <AttachmentPreview attachments={sub.attachments} />
                         <div className="text-xs text-muted-foreground">
                           {displayName(sub.userId)} | Mark:{" "}
                           {sub.mark ?? "unmarked"}
+                          {isSubmissionFromTeacher(sub.userId) &&
+                            " | Teacher submission"}
                         </div>
+                        {canEditSubmission(sub) && (
+                          <div className="mt-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                startEditSubmission(assignment.id ?? "", sub)
+                              }
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
                         {isTeacher && (
                           <div className="mt-2 flex gap-2">
                             <Input
@@ -894,7 +1326,7 @@ export default function ClassDetailPage() {
                                 void setMark(sub.id, parsed);
                               }}
                             >
-                              Save mark
+                              <Save className="h-4 w-4" />
                             </Button>
                           </div>
                         )}
@@ -916,10 +1348,11 @@ export default function ClassDetailPage() {
             value={settingsName}
             onChange={(e) => setSettingsName(e.target.value)}
           />
-          <Input
+          <MarkdownEditor
             placeholder="Colony description"
             value={settingsDescription}
-            onChange={(e) => setSettingsDescription(e.target.value)}
+            onChange={setSettingsDescription}
+            minRows={6}
           />
           <div className="flex items-center gap-2">
             <label className="text-sm">Accent color</label>
@@ -1000,12 +1433,30 @@ export default function ClassDetailPage() {
             value={threadTitle}
             onChange={(e) => setThreadTitle(e.target.value)}
           />
-          <Input
+          <MarkdownEditor
             placeholder="Body"
             value={threadBody}
-            onChange={(e) => setThreadBody(e.target.value)}
+            onChange={setThreadBody}
+            minRows={8}
           />
-          <Button onClick={createThread}>Post thread</Button>
+          <Input
+            type="file"
+            multiple
+            onChange={(e) =>
+              void uploadAttachments(e.target.files, (rows) =>
+                setThreadAttachments((prev) => [...prev, ...rows]),
+              )
+            }
+          />
+          <AttachmentPreview
+            attachments={threadAttachments}
+            onRemove={(index) =>
+              setThreadAttachments((prev) =>
+                prev.filter((_, i) => i !== index),
+              )
+            }
+          />
+          <Button onClick={createThread}><Send className="h-4 w-4" /></Button>
         </DialogContent>
       </Dialog>
 
@@ -1014,7 +1465,7 @@ export default function ClassDetailPage() {
         onOpenChange={setAssignmentDialogOpen}
       >
         <DialogOverlay className="fixed inset-0 bg-black/30 backdrop-blur-md" />
-        <DialogContent className="sm:max-w-md p-6 space-y-4">
+        <DialogContent className="sm:max-w-3xl w-[92vw] max-h-[90vh] overflow-y-auto p-6 space-y-4">
           <DialogHeader>
             <DialogTitle>Create assignment</DialogTitle>
           </DialogHeader>
@@ -1023,10 +1474,11 @@ export default function ClassDetailPage() {
             value={newAssignmentName}
             onChange={(e) => setNewAssignmentName(e.target.value)}
           />
-          <Input
+          <MarkdownEditor
             placeholder="Description"
             value={newAssignmentText}
-            onChange={(e) => setNewAssignmentText(e.target.value)}
+            onChange={setNewAssignmentText}
+            minRows={6}
           />
           <Input
             type="datetime-local"
@@ -1038,7 +1490,26 @@ export default function ClassDetailPage() {
             value={newAssignmentMaxMark}
             onChange={(e) => setNewAssignmentMaxMark(e.target.value)}
           />
-          <Button onClick={createAssignment}>Create assignment</Button>
+          <Input
+            type="file"
+            multiple
+            onChange={(e) =>
+              void uploadAttachments(e.target.files, (rows) =>
+                setNewAssignmentAttachments((prev) => [...prev, ...rows]),
+              )
+            }
+          />
+          <AttachmentPreview
+            attachments={newAssignmentAttachments}
+            onRemove={(index) =>
+              setNewAssignmentAttachments((prev) =>
+                prev.filter((_, i) => i !== index),
+              )
+            }
+          />
+          <Button onClick={createAssignment} disabled={uploading}>
+            {uploading ? "Uploading..." : "Create"}
+          </Button>
         </DialogContent>
       </Dialog>
     </main>
@@ -1103,7 +1574,11 @@ function CommentTree(props: {
           </div>
           {!collapsedComments[c.id ?? ""] ? (
             <>
-              <div className="text-sm whitespace-pre-wrap">{c.text}</div>
+              <MarkdownContent
+                className="prose prose-sm max-w-none dark:prose-invert"
+                content={c.text}
+              />
+              <AttachmentPreview attachments={c.attachments} />
               {!openReplyEditors[c.id ?? ""] ? (
                 <Button
                   size="sm"
@@ -1116,25 +1591,27 @@ function CommentTree(props: {
                   }
                   disabled={!canReply}
                 >
-                  Reply
+                  <Reply className="h-4 w-4" />
                 </Button>
               ) : (
-                <div className="flex gap-2">
-                  <Input
+                <div className="space-y-2">
+                  <MarkdownEditor
                     placeholder="Reply..."
                     value={replyText[c.id ?? ""] ?? ""}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       setReplyText((prev) => ({
                         ...prev,
-                        [c.id ?? ""]: e.target.value,
+                        [c.id ?? ""]: value,
                       }))
                     }
+                    minRows={3}
                   />
+                  <div className="flex gap-2">
                   <Button
                     onClick={() => c.id && onReply(c.id)}
                     disabled={!canReply}
                   >
-                    Post
+                    <Send className="h-4 w-4" />
                   </Button>
                   <Button
                     size="sm"
@@ -1146,8 +1623,9 @@ function CommentTree(props: {
                       }))
                     }
                   >
-                    Cancel
+                    <X className="h-4 w-4" />
                   </Button>
+                  </div>
                 </div>
               )}
             </>

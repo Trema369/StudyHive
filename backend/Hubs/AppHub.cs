@@ -15,7 +15,8 @@ namespace backend.Hubs;
 
 public class AppHub : Hub<IAppHubClient>, IAppHubServer
 {
-    private readonly ConcurrentDictionary<string, string> connectedChats = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, bool>> connectedChats =
+        new();
     HttpClient httpClient = new HttpClient();
     private readonly SurrealDbClient dbClient;
     private readonly SurrealDbOptions dbOptions;
@@ -38,12 +39,10 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public override Task OnDisconnectedAsync(Exception? exception)
     {
-        if (
-            connectedChats.TryRemove(Context.ConnectionId, out var parentId)
-            && !string.IsNullOrWhiteSpace(parentId)
-        )
+        if (connectedChats.TryRemove(Context.ConnectionId, out var parents))
         {
-            return Groups.RemoveFromGroupAsync(Context.ConnectionId, parentId);
+            var tasks = parents.Keys.Select(p => Groups.RemoveFromGroupAsync(Context.ConnectionId, p));
+            return Task.WhenAll(tasks);
         }
         Console.WriteLine("Disconnected");
         Console.WriteLine(exception);
@@ -113,19 +112,89 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public async Task<Message> SaveMessage(Message msg)
     {
-        var res = await dbClient.Create("message", new DbMessage(msg));
+        var messageId = string.IsNullOrWhiteSpace(msg.id) ? Guid.NewGuid().ToString("N") : msg.id!;
+        msg.date ??= DateTime.Now;
+        msg.attachments ??= [];
+        RecordId id = ("message", messageId);
+        if (string.IsNullOrWhiteSpace(msg.parentMessageId))
+        {
+            await dbClient.Query(
+                $"CREATE {id} SET parentId = {msg.parentId}, userId = {msg.userId}, text = {msg.text}, attachments = {msg.attachments}, date = {msg.date};"
+            );
+        }
+        else
+        {
+            await dbClient.Query(
+                $"CREATE {id} SET parentId = {msg.parentId}, parentMessageId = {msg.parentMessageId}, userId = {msg.userId}, text = {msg.text}, attachments = {msg.attachments}, date = {msg.date};"
+            );
+        }
+        var res = await dbClient.Select<DbMessage>(id);
+        if (res is null)
+            throw new Exception("Message create did not persist");
         return res.ToBase();
     }
 
     public async Task<Chat> CreateChat(Chat chat)
     {
-        var res = await dbClient.Create("chat", new DbChat(chat));
+        chat.userIds ??= [];
+        chat.adminIds ??= [];
+        if (chat.adminIds.Count == 0 && chat.userIds.Count > 0)
+        {
+            chat.adminIds = [chat.userIds[0]];
+        }
+        chat.accentColor ??= "#3b82f6";
+        chat.adminOnly ??= false;
+        chat.isDirect ??= false;
+        var chatId = string.IsNullOrWhiteSpace(chat.id) ? Guid.NewGuid().ToString("N") : chat.id!;
+        RecordId id = ("chat", chatId);
+        if (string.IsNullOrWhiteSpace(chat.name))
+        {
+            await dbClient.Query(
+                $"CREATE {id} SET userIds = {chat.userIds}, adminIds = {chat.adminIds}, accentColor = {chat.accentColor}, adminOnly = {chat.adminOnly.Value}, isDirect = {chat.isDirect.Value};"
+            );
+        }
+        else
+        {
+            await dbClient.Query(
+                $"CREATE {id} SET name = {chat.name}, userIds = {chat.userIds}, adminIds = {chat.adminIds}, accentColor = {chat.accentColor}, adminOnly = {chat.adminOnly.Value}, isDirect = {chat.isDirect.Value};"
+            );
+        }
+        var res = await dbClient.Select<DbChat>(id);
+        if (res is null)
+            throw new Exception("Chat create did not persist");
         return res.ToBase();
     }
 
     public async Task<Chat> UpdateChat(Chat chat)
     {
-        var res = await dbClient.Update(new DbChat(chat));
+        if (string.IsNullOrWhiteSpace(chat.id))
+            throw new Exception("Chat id is required");
+
+        chat.userIds ??= [];
+        chat.adminIds ??= [];
+        chat.accentColor ??= "#3b82f6";
+        chat.adminOnly ??= false;
+        chat.isDirect ??= false;
+
+        RecordId id = ("chat", chat.id);
+        await dbClient.Query($"UPDATE {id} UNSET name WHERE name = NULL OR name = NONE;");
+
+        if (string.IsNullOrWhiteSpace(chat.name))
+        {
+            await dbClient.Query(
+                $"UPDATE {id} SET userIds = {chat.userIds}, adminIds = {chat.adminIds}, accentColor = {chat.accentColor}, adminOnly = {chat.adminOnly.Value}, isDirect = {chat.isDirect.Value} UNSET name;"
+            );
+        }
+        else
+        {
+            await dbClient.Query(
+                $"UPDATE {id} SET name = {chat.name}, userIds = {chat.userIds}, adminIds = {chat.adminIds}, accentColor = {chat.accentColor}, adminOnly = {chat.adminOnly.Value}, isDirect = {chat.isDirect.Value};"
+            );
+        }
+
+        var res = await dbClient.Select<DbChat>(id);
+        if (res is null)
+            throw new Exception("Chat update did not persist");
         return res.ToBase();
     }
 
@@ -144,23 +213,20 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public async Task<Class?> JoinClass(string userId, string code)
     {
+        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(code))
+            return null;
         var result = await dbClient.Query(
             $"UPDATE class WHERE code = {code} SET userIds += {userId};"
         );
-        return result?.GetValue<List<DbClass>>(0)?.First()?.ToBase();
+        return result?.GetValue<List<DbClass>>(0)?.FirstOrDefault()?.ToBase();
     }
 
     public async Task ConnectToChat(string parent)
     {
         if (string.IsNullOrWhiteSpace(parent))
             return;
-
-        if (connectedChats.TryGetValue(Context.ConnectionId, out var oldParent) && oldParent != parent)
-        {
-            await Groups.RemoveFromGroupAsync(Context.ConnectionId, oldParent);
-        }
-
-        connectedChats.AddOrUpdate(Context.ConnectionId, parent, (_, _) => parent);
+        var groups = connectedChats.GetOrAdd(Context.ConnectionId, _ => new());
+        groups[parent] = true;
         await Groups.AddToGroupAsync(Context.ConnectionId, parent);
     }
 
@@ -445,15 +511,18 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public async Task<Class> UpdateClassInfo(string classId, string? name, string? description)
     {
-        var updates = new List<string>();
-        if (name is not null)
-            updates.Add($"name = '{name}'");
-        if (description is not null)
-            updates.Add($"description = '{description}'");
-        if (updates.Count > 0)
+        RecordId id = ("class", classId);
+        if (name is not null && description is not null)
         {
-            var upd = string.Join(", ", updates);
-            await dbClient.Query($"UPDATE class:{classId} SET {upd};");
+            await dbClient.Query($"UPDATE {id} SET name = {name}, description = {description};");
+        }
+        else if (name is not null)
+        {
+            await dbClient.Query($"UPDATE {id} SET name = {name};");
+        }
+        else if (description is not null)
+        {
+            await dbClient.Query($"UPDATE {id} SET description = {description};");
         }
         var res = await dbClient.Select<DbClass>(("class", classId));
         return res!.ToBase();
@@ -551,13 +620,13 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         if (string.IsNullOrWhiteSpace(comment.parentCommentId))
         {
             await dbClient.Query(
-                $"CREATE {id} SET threadId = {comment.threadId}, userId = {comment.userId}, text = {comment.text}, date = {comment.date};"
+                $"CREATE {id} SET threadId = {comment.threadId}, userId = {comment.userId}, text = {comment.text}, attachments = {comment.attachments ?? []}, date = {comment.date};"
             );
         }
         else
         {
             await dbClient.Query(
-                $"CREATE {id} SET threadId = {comment.threadId}, userId = {comment.userId}, text = {comment.text}, date = {comment.date}, parentCommentId = {comment.parentCommentId};"
+                $"CREATE {id} SET threadId = {comment.threadId}, userId = {comment.userId}, text = {comment.text}, attachments = {comment.attachments ?? []}, date = {comment.date}, parentCommentId = {comment.parentCommentId};"
             );
         }
 
@@ -573,13 +642,13 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         if (string.IsNullOrWhiteSpace(comment.parentCommentId))
         {
             await dbClient.Query(
-                $"UPDATE {id} SET threadId = {comment.threadId}, userId = {comment.userId}, text = {comment.text}, date = {comment.date ?? DateTime.Now} UNSET parentCommentId;"
+                $"UPDATE {id} SET threadId = {comment.threadId}, userId = {comment.userId}, text = {comment.text}, attachments = {comment.attachments ?? []}, date = {comment.date ?? DateTime.Now} UNSET parentCommentId;"
             );
         }
         else
         {
             await dbClient.Query(
-                $"UPDATE {id} SET threadId = {comment.threadId}, userId = {comment.userId}, text = {comment.text}, date = {comment.date ?? DateTime.Now}, parentCommentId = {comment.parentCommentId};"
+                $"UPDATE {id} SET threadId = {comment.threadId}, userId = {comment.userId}, text = {comment.text}, attachments = {comment.attachments ?? []}, date = {comment.date ?? DateTime.Now}, parentCommentId = {comment.parentCommentId};"
             );
         }
 
@@ -654,25 +723,25 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         if (ass.due is null && ass.maxMark is null)
         {
             await dbClient.Query(
-                $"CREATE type::thing('assignment', {assignmentId}) SET classId = {ass.classId}, name = {ass.name}, text = {ass.text};"
+                $"CREATE type::thing('assignment', {assignmentId}) SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, attachments = {ass.attachments ?? []};"
             );
         }
         else if (ass.due is null)
         {
             await dbClient.Query(
-                $"CREATE type::thing('assignment', {assignmentId}) SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, maxMark = {ass.maxMark!.Value};"
+                $"CREATE type::thing('assignment', {assignmentId}) SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, attachments = {ass.attachments ?? []}, maxMark = {ass.maxMark!.Value};"
             );
         }
         else if (ass.maxMark is null)
         {
             await dbClient.Query(
-                $"CREATE type::thing('assignment', {assignmentId}) SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, due = {ass.due.Value};"
+                $"CREATE type::thing('assignment', {assignmentId}) SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, attachments = {ass.attachments ?? []}, due = {ass.due.Value};"
             );
         }
         else
         {
             await dbClient.Query(
-                $"CREATE type::thing('assignment', {assignmentId}) SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, due = {ass.due.Value}, maxMark = {ass.maxMark.Value};"
+                $"CREATE type::thing('assignment', {assignmentId}) SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, attachments = {ass.attachments ?? []}, due = {ass.due.Value}, maxMark = {ass.maxMark.Value};"
             );
         }
 
@@ -691,25 +760,25 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         if (ass.due is null && ass.maxMark is null)
         {
             await dbClient.Query(
-                $"UPDATE {id} SET classId = {ass.classId}, name = {ass.name}, text = {ass.text} UNSET due, maxMark;"
+                $"UPDATE {id} SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, attachments = {ass.attachments ?? []} UNSET due, maxMark;"
             );
         }
         else if (ass.due is null)
         {
             await dbClient.Query(
-                $"UPDATE {id} SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, maxMark = {ass.maxMark!.Value} UNSET due;"
+                $"UPDATE {id} SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, attachments = {ass.attachments ?? []}, maxMark = {ass.maxMark!.Value} UNSET due;"
             );
         }
         else if (ass.maxMark is null)
         {
             await dbClient.Query(
-                $"UPDATE {id} SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, due = {ass.due.Value} UNSET maxMark;"
+                $"UPDATE {id} SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, attachments = {ass.attachments ?? []}, due = {ass.due.Value} UNSET maxMark;"
             );
         }
         else
         {
             await dbClient.Query(
-                $"UPDATE {id} SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, due = {ass.due.Value}, maxMark = {ass.maxMark.Value};"
+                $"UPDATE {id} SET classId = {ass.classId}, name = {ass.name}, text = {ass.text}, attachments = {ass.attachments ?? []}, due = {ass.due.Value}, maxMark = {ass.maxMark.Value};"
             );
         }
 
@@ -1135,7 +1204,8 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public async Task<string> GetChatNameInternal(Chat chat, string userId)
     {
-        if (chat.name is null || !chat.name.Any())
+        var isDirect = chat.isDirect == true || (chat.userIds?.Count ?? 0) <= 2;
+        if (isDirect)
         {
             var other = chat.userIds?.FirstOrDefault();
             if (other is null)
@@ -1161,10 +1231,13 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
                 return other;
             }
         }
-        else
+
+        if (!string.IsNullOrWhiteSpace(chat.name))
         {
-            return chat.name;
+            return chat.name!;
         }
+
+        return "Group chat";
     }
 
     public async Task<string> GetChatName(Chat chat, string userId)
@@ -1240,8 +1313,24 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
         if (ret_user is not null)
         {
-            await CreateChat(new Chat { userIds = [ret_user.id, "AI"], name = "AI" });
-            await CreateChat(new Chat { userIds = [ret_user.id], name = "You" });
+            await CreateChat(
+                new Chat
+                {
+                    userIds = [ret_user.id, "AI"],
+                    name = null,
+                    isDirect = true,
+                    adminIds = [ret_user.id],
+                }
+            );
+            await CreateChat(
+                new Chat
+                {
+                    userIds = [ret_user.id],
+                    name = null,
+                    isDirect = true,
+                    adminIds = [ret_user.id],
+                }
+            );
         }
         return ret_user;
     }

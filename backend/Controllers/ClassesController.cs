@@ -1,6 +1,8 @@
 using backend.Hubs;
+using backend.Shared;
 using backend.Shared.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 
 namespace backend.Controllers;
 
@@ -9,10 +11,12 @@ namespace backend.Controllers;
 public class ClassesController : ControllerBase
 {
     private readonly AppHub _appHub;
+    private readonly IHubContext<AppHub, IAppHubClient> _hubContext;
 
-    public ClassesController(AppHub appHub)
+    public ClassesController(AppHub appHub, IHubContext<AppHub, IAppHubClient> hubContext)
     {
         _appHub = appHub;
+        _hubContext = hubContext;
     }
 
     [HttpPost]
@@ -50,10 +54,34 @@ public class ClassesController : ControllerBase
     }
 
     [HttpPost("join")]
-    public async Task<ActionResult<Class>> JoinClass(string code, [FromBody] JoinClassRequest req)
+    public async Task<ActionResult<Class>> JoinClass([FromBody] JoinClassRequest req)
     {
+        if (string.IsNullOrWhiteSpace(req.userId) || string.IsNullOrWhiteSpace(req.code))
+            return BadRequest(new { message = "userId and code are required" });
         var joined = await _appHub.JoinClass(req.userId, req.code);
+        if (joined is null)
+            return NotFound(new { message = "No class found with that code" });
         return Ok(joined);
+    }
+
+    [HttpPost("{classId}/join")]
+    public async Task<ActionResult<Class>> JoinPublicClass(
+        string classId,
+        [FromBody] JoinPublicClassRequest req
+    )
+    {
+        if (string.IsNullOrWhiteSpace(req.userId))
+            return BadRequest(new { message = "userId is required" });
+
+        var clss = await _appHub.GetClass(classId);
+        if (clss is null)
+            return NotFound();
+        if (clss.isPublic != true)
+            return Forbid();
+        if ((clss.userIds ?? []).Contains(req.userId))
+            return Ok(clss);
+
+        return Ok(await _appHub.AddStudentToClass(classId, req.userId));
     }
 
     [HttpPatch("{classId}")]
@@ -137,9 +165,11 @@ public class ClassesController : ControllerBase
                 userId = req.userId,
                 title = req.title.Trim(),
                 text = req.text.Trim(),
+                attachments = req.attachments ?? [],
                 date = DateTime.Now,
             }
         );
+        await _hubContext.Clients.Group($"class-threads-{classId}").ReceiveClassThread(thread);
         return Ok(thread);
     }
 
@@ -170,18 +200,19 @@ public class ClassesController : ControllerBase
         [FromBody] CreateThreadCommentRequest req
     )
     {
-        return Ok(
-            await _appHub.CreateClassThreadComment(
-                new ClassThreadComment
-                {
-                    threadId = threadId,
-                    userId = req.userId,
-                    parentCommentId = req.parentCommentId,
-                    text = req.text,
-                    date = DateTime.Now,
-                }
-            )
+        var created = await _appHub.CreateClassThreadComment(
+            new ClassThreadComment
+            {
+                threadId = threadId,
+                userId = req.userId,
+                parentCommentId = req.parentCommentId,
+                text = req.text,
+                attachments = req.attachments ?? [],
+                date = DateTime.Now,
+            }
         );
+        await _hubContext.Clients.Group($"thread-comments-{threadId}").ReceiveClassThreadComment(created);
+        return Ok(created);
     }
 
     [HttpGet("{classId}/assignments")]
@@ -204,6 +235,7 @@ public class ClassesController : ControllerBase
                 text = req.text,
                 due = req.due,
                 maxMark = req.maxMark,
+                attachments = req.attachments ?? [],
             }
         );
         return Ok(ass);
@@ -223,6 +255,7 @@ public class ClassesController : ControllerBase
         existing.text = req.text ?? existing.text;
         existing.due = req.due ?? existing.due;
         existing.maxMark = req.maxMark ?? existing.maxMark;
+        existing.attachments = req.attachments ?? existing.attachments;
         return Ok(await _appHub.UpdateAssignment(existing));
     }
 
@@ -235,9 +268,11 @@ public class ClassesController : ControllerBase
         var sub = await _appHub.SubmitAssignment(
             new Submission
             {
+                id = req.id,
                 assignmentId = assignmentId,
                 userId = req.userId,
                 text = req.text,
+                attachments = req.attachments ?? [],
                 date = DateTime.Now,
             }
         );
@@ -278,6 +313,11 @@ public class JoinClassRequest
     public string? code { get; set; }
 }
 
+public class JoinPublicClassRequest
+{
+    public string? userId { get; set; }
+}
+
 public class UpdateClassRequest
 {
     public string? name { get; set; }
@@ -292,6 +332,7 @@ public class CreateThreadRequest
     public string? userId { get; set; }
     public string? title { get; set; }
     public string? text { get; set; }
+    public List<Attachment>? attachments { get; set; }
 }
 
 public class UpdateThreadRequest
@@ -305,6 +346,7 @@ public class CreateThreadCommentRequest
     public string? userId { get; set; }
     public string? parentCommentId { get; set; }
     public string? text { get; set; }
+    public List<Attachment>? attachments { get; set; }
 }
 
 public class CreateAssignmentRequest
@@ -313,12 +355,15 @@ public class CreateAssignmentRequest
     public string? text { get; set; }
     public DateTime? due { get; set; }
     public int? maxMark { get; set; }
+    public List<Attachment>? attachments { get; set; }
 }
 
 public class SubmitAssignmentRequest
 {
+    public string? id { get; set; }
     public string? userId { get; set; }
     public string? text { get; set; }
+    public List<Attachment>? attachments { get; set; }
 }
 
 public class SetMarkRequest

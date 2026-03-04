@@ -97,6 +97,7 @@ public class DbClassThread : Record
     public string? userId { get; set; }
     public string? title { get; set; }
     public string? text { get; set; }
+    public List<Attachment>? attachments { get; set; }
     public DateTime? date { get; set; }
 
     public DbClassThread() { }
@@ -107,6 +108,7 @@ public class DbClassThread : Record
         this.userId = thread.userId;
         this.title = thread.title;
         this.text = thread.text;
+        this.attachments = thread.attachments ?? [];
         this.date = thread.date;
         if (thread.id is not null)
         {
@@ -122,6 +124,7 @@ public class DbClassThread : Record
             userId = this.userId,
             title = this.title,
             text = this.text,
+            attachments = this.attachments ?? [],
             date = this.date,
             id = this.Id?.DeserializeId<string>(),
         };
@@ -135,6 +138,7 @@ public class DbClassThreadComment : Record
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? parentCommentId { get; set; }
     public string? text { get; set; }
+    public List<Attachment>? attachments { get; set; }
     public DateTime? date { get; set; }
 
     public DbClassThreadComment() { }
@@ -145,6 +149,7 @@ public class DbClassThreadComment : Record
         this.userId = comment.userId;
         this.parentCommentId = comment.parentCommentId;
         this.text = comment.text;
+        this.attachments = comment.attachments ?? [];
         this.date = comment.date;
         if (comment.id is not null)
         {
@@ -160,6 +165,7 @@ public class DbClassThreadComment : Record
             userId = this.userId,
             parentCommentId = this.parentCommentId,
             text = this.text,
+            attachments = this.attachments ?? [],
             date = this.date,
             id = this.Id?.DeserializeId<string>(),
         };
@@ -174,6 +180,7 @@ public class DbAssignment : Record
     public DateTime? due { get; set; }
     public string? text { get; set; }
     public int? maxMark { get; set; }
+    public List<Attachment>? attachments { get; set; }
 
     public DbAssignment() { }
 
@@ -184,6 +191,7 @@ public class DbAssignment : Record
         this.due = ass.due;
         this.text = ass.text;
         this.maxMark = ass.maxMark;
+        this.attachments = ass.attachments ?? [];
         if (ass.id is not null)
         {
             this.Id = new RecordIdOfString("assignment", ass.id);
@@ -199,6 +207,7 @@ public class DbAssignment : Record
             text = this.text,
             due = this.due,
             maxMark = this.maxMark,
+            attachments = this.attachments ?? [],
             id = this.Id?.DeserializeId<string>(),
         };
     }
@@ -210,6 +219,7 @@ public class DbSubmission : Record
     public DateTime? date { get; set; }
     public string? userId { get; set; }
     public string? text { get; set; }
+    public List<Attachment>? attachments { get; set; }
     public int? mark { get; set; }
 
     public DbSubmission() { }
@@ -219,6 +229,7 @@ public class DbSubmission : Record
         this.assignmentId = sub.assignmentId;
         this.userId = sub.userId;
         this.text = sub.text;
+        this.attachments = sub.attachments ?? [];
         this.date = sub.date;
         this.mark = sub.mark;
         if (sub.id is not null)
@@ -234,6 +245,7 @@ public class DbSubmission : Record
             assignmentId = this.assignmentId,
             userId = this.userId,
             text = this.text,
+            attachments = this.attachments ?? [],
             date = this.date,
             mark = this.mark,
             id = this.Id?.DeserializeId<string>(),

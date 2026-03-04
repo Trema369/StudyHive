@@ -1,5 +1,6 @@
 using backend.Hubs;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.Extensions.FileProviders;
 using OllamaSharp;
 using SurrealDb.Net;
 
@@ -50,6 +51,15 @@ app.UseHttpsRedirection();
 app.UseRouting();
 app.UseCors("AllowFrontend");
 app.UseResponseCompression();
+var uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+Directory.CreateDirectory(uploadsPath);
+app.UseStaticFiles(
+    new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(uploadsPath),
+        RequestPath = "/uploads",
+    }
+);
 
 app.MapControllers();
 app.MapHub<AppHub>("/apphub");
@@ -125,6 +135,7 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS userId ON TABLE class_thread TYPE string;
         DEFINE FIELD IF NOT EXISTS title ON TABLE class_thread TYPE string;
         DEFINE FIELD IF NOT EXISTS text ON TABLE class_thread TYPE string;
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE class_thread TYPE option<array<object>>;
         DEFINE FIELD IF NOT EXISTS date ON TABLE class_thread TYPE datetime DEFAULT time::now();
 
         DEFINE TABLE IF NOT EXISTS class_thread_comment SCHEMALESS;
@@ -133,21 +144,32 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS userId ON TABLE class_thread_comment TYPE string;
         DEFINE FIELD parentCommentId ON TABLE class_thread_comment TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS text ON TABLE class_thread_comment TYPE string;
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE class_thread_comment TYPE option<array<object>>;
         DEFINE FIELD IF NOT EXISTS date ON TABLE class_thread_comment TYPE datetime DEFAULT time::now();
         UPDATE class_thread_comment UNSET parentCommentId WHERE parentCommentId = NULL OR parentCommentId = NONE;
 
         DEFINE TABLE IF NOT EXISTS chat SCHEMALESS;
+        DEFINE TABLE chat SCHEMALESS PERMISSIONS FULL;
         DEFINE FIELD IF NOT EXISTS name ON TABLE chat TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS userIds ON TABLE chat TYPE array<string>;
+        DEFINE FIELD IF NOT EXISTS adminIds ON TABLE chat TYPE array<string>;
+        DEFINE FIELD IF NOT EXISTS accentColor ON TABLE chat TYPE string DEFAULT '#3b82f6';
+        DEFINE FIELD IF NOT EXISTS adminOnly ON TABLE chat TYPE bool DEFAULT false;
+        DEFINE FIELD IF NOT EXISTS isDirect ON TABLE chat TYPE bool DEFAULT false;
+        UPDATE chat UNSET name WHERE name = NULL OR name = NONE;
 
         DEFINE ANALYZER chat_analyzer TOKENIZERS class, blank FILTERS lowercase, ascii;
         DEFINE INDEX name_index ON TABLE chat COLUMNS name SEARCH ANALYZER chat_analyzer BM25;
 
         DEFINE TABLE IF NOT EXISTS message SCHEMALESS;
+        DEFINE TABLE message SCHEMALESS PERMISSIONS FULL;
         DEFINE FIELD IF NOT EXISTS date ON TABLE message TYPE datetime DEFAULT time::now();
         DEFINE FIELD IF NOT EXISTS parentId ON TABLE message TYPE string;
+        DEFINE FIELD IF NOT EXISTS parentMessageId ON TABLE message TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS text ON TABLE message TYPE string;
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE message TYPE option<array<object>>;
         DEFINE FIELD IF NOT EXISTS userId ON TABLE message TYPE string;
+        UPDATE message UNSET parentMessageId WHERE parentMessageId = NULL OR parentMessageId = NONE;
 
         DEFINE TABLE IF NOT EXISTS assignment SCHEMALESS;
         DEFINE TABLE assignment SCHEMALESS PERMISSIONS FULL;
@@ -156,6 +178,7 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS classId ON TABLE assignment TYPE string;
         DEFINE FIELD IF NOT EXISTS text ON TABLE assignment TYPE string;
         DEFINE FIELD maxMark ON TABLE assignment TYPE option<int>;
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE assignment TYPE option<array<object>>;
         UPDATE assignment UNSET due WHERE due = NULL OR due = NONE;
         UPDATE assignment UNSET maxMark WHERE maxMark = NULL OR maxMark = NONE;
 
@@ -165,6 +188,7 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS assignmentId ON TABLE submission TYPE string;
         DEFINE FIELD IF NOT EXISTS text ON TABLE submission TYPE string;
         DEFINE FIELD IF NOT EXISTS userId ON TABLE submission TYPE string;
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE submission TYPE option<array<object>>;
 
         DEFINE TABLE IF NOT EXISTS quiz SCHEMALESS;
         DEFINE FIELD IF NOT EXISTS name ON TABLE quiz TYPE string;
