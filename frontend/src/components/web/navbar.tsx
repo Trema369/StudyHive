@@ -22,21 +22,17 @@ export function Navbar() {
             <div className="flex-1">
                 <Link href="/" className="inline-flex items-center">
                     <Image
-                        src="/light.png"
-                        alt="StudyHive"
+                        src="/icon.png"
+                        alt="StudyHive icon"
                         width={500}
                         height={76}
-                        className="h-12 w-auto dark:hidden"
+                        className="h-10 w-10 rounded-md"
                         priority
                     />
-                    <Image
-                        src="/dark.png"
-                        alt="StudyHive"
-                        width={500}
-                        height={76}
-                        className="hidden h-12 w-auto dark:block"
-                        priority
-                    />
+                    <h1 className="text-3xl font-extrabold text-center">
+                        <span className="text-yellow-400">Study</span>
+                        <span className="text-black dark:text-white">Hive</span>
+                    </h1>
                 </Link>
             </div>
 

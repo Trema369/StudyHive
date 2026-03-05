@@ -1,38 +1,102 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Upload } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { uploadFile, Attachment } from '@/lib/uploads';
 
-export function FileDropzone() {
+type FileDropzoneProps = {
+    onUploadComplete: (attachments: Attachment[]) => void;
+};
+
+export function FileDropzone({ onUploadComplete }: FileDropzoneProps) {
+    const [files, setFiles] = useState<File[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
+
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE!;
+
     const onDrop = useCallback((acceptedFiles: File[]) => {
-        console.log(acceptedFiles);
+        setFiles(acceptedFiles);
     }, []);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
     });
 
+    const handleUpload = async () => {
+        if (files.length === 0) return;
+
+        setIsUploading(true);
+
+        try {
+            const results = await Promise.all(
+                files.map((file) => uploadFile(apiBase, file))
+            );
+
+            onUploadComplete(results); // 🔥 send to parent
+            setFiles([]);
+        } catch (err) {
+            console.error(err);
+            alert('Upload failed');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
     return (
         <Card
             {...getRootProps()}
-            className={`relative cursor-pointer border-2 border-dashed transition
-        ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-muted'} w-full max-w-4xl mx-auto h-80`}
+            className={cn(
+                'relative cursor-pointer border-2 border-dashed transition-colors duration-200',
+                'w-full max-w-4xl mx-auto h-80 flex items-center justify-center',
+                isDragActive ? 'border-primary bg-secondary/50' : 'border-muted'
+            )}
         >
             <CardContent className="flex flex-col items-center justify-center p-10 text-center">
-                <Upload className="w-10 h-10 mb-4" />
                 <input {...getInputProps()} />
-                {isDragActive ? (
-                    <p>Drop the files here...</p>
+                <Upload className="w-10 h-10 mb-4 text-muted-foreground" />
+
+                {files.length > 0 ? (
+                    <div>
+                        <p className="font-medium">
+                            {files.length} file(s) selected
+                        </p>
+                        <ul className="text-sm text-muted-foreground mt-2">
+                            {files.map((file, i) => (
+                                <li key={i}>{file.name}</li>
+                            ))}
+                        </ul>
+                    </div>
+                ) : isDragActive ? (
+                    <p className="text-lg font-medium text-primary">
+                        Drop the files here...
+                    </p>
                 ) : (
-                    <p>Drag & drop files here, or click to select</p>
+                    <div className="space-y-1">
+                        <p className="text-lg font-medium">
+                            Drag & drop files here, or click to select
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                            Supports images, PDFs, and spreadsheets
+                        </p>
+                    </div>
                 )}
             </CardContent>
 
             <div className="absolute bottom-4 right-4">
-                <Button type="button">Upload</Button>
+                <Button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        handleUpload();
+                    }}
+                    disabled={isUploading || files.length === 0}
+                >
+                    {isUploading ? 'Uploading...' : 'Upload'}
+                </Button>
             </div>
         </Card>
     );

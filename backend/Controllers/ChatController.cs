@@ -1,8 +1,8 @@
 using backend.Hubs;
 using backend.Shared;
 using backend.Shared.Models;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 
 namespace backend.Controllers
 {
@@ -33,7 +33,7 @@ namespace backend.Controllers
                 var user = await _appHub.GetUserFromUsername(raw.Trim());
                 ids.Add(user!.id!);
             }
-            
+
             return ids.Distinct().ToList();
         }
 
@@ -54,7 +54,10 @@ namespace backend.Controllers
         [HttpPost]
         public async Task<ActionResult<Chat>> CreateChat([FromBody] CreateChatRequest req)
         {
-            var users = (req.userIds ?? []).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
+            var users = (req.userIds ?? [])
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct()
+                .ToList();
             var fromUsernames = await ResolveUsernamesToIds(req.usernames);
             users = users.Concat(fromUsernames).Distinct().ToList();
             if (!string.IsNullOrWhiteSpace(req.creatorUserId) && !users.Contains(req.creatorUserId))
@@ -71,7 +74,9 @@ namespace backend.Controllers
                 {
                     name = isDirect ? null : req.name?.Trim(),
                     userIds = users,
-                    adminIds = string.IsNullOrWhiteSpace(req.creatorUserId) ? users.Take(1).ToList() : [req.creatorUserId],
+                    adminIds = string.IsNullOrWhiteSpace(req.creatorUserId)
+                        ? users.Take(1).ToList()
+                        : [req.creatorUserId],
                     accentColor = req.accentColor ?? "#3b82f6",
                     adminOnly = req.adminOnly ?? false,
                     isDirect = isDirect,
@@ -102,7 +107,10 @@ namespace backend.Controllers
         }
 
         [HttpPost("{chatId}/users")]
-        public async Task<ActionResult<Chat>> AddUser(string chatId, [FromBody] AddUserToChatRequest req)
+        public async Task<ActionResult<Chat>> AddUser(
+            string chatId,
+            [FromBody] AddUserToChatRequest req
+        )
         {
             var chat = await _appHub.GetChat(chatId);
             if (!IsAdmin(chat, req.requestingUserId))
@@ -147,7 +155,7 @@ namespace backend.Controllers
         public async Task<ActionResult<Message>> SendMessage([FromBody] Message message)
         {
             var chat = await _appHub.GetChat(message.parentId);
-            
+
             if (chat.adminOnly ?? true && !IsAdmin(chat, message.userId))
                 return Forbid();
 

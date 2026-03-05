@@ -1,22 +1,24 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Collections.Concurrent;
 using backend.Shared;
 using backend.Shared.Models;
 using Microsoft.AspNetCore.SignalR;
 using SurrealDb.Net;
-using SurrealDb.Net.Models.Auth;
-using SurrealDb.Net.Models;
 using SurrealDb.Net.Exceptions;
+using SurrealDb.Net.Models;
+using SurrealDb.Net.Models.Auth;
 
 namespace backend.Hubs;
 
 public class AppHub : Hub<IAppHubClient>, IAppHubServer
 {
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, bool>> connectedChats =
-        new();
+    private readonly ConcurrentDictionary<
+        string,
+        ConcurrentDictionary<string, bool>
+    > connectedChats = new();
     HttpClient httpClient = new HttpClient();
     private readonly SurrealDbClient dbClient;
     private readonly SurrealDbOptions dbOptions;
@@ -41,7 +43,9 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
     {
         if (connectedChats.TryRemove(Context.ConnectionId, out var parents))
         {
-            var tasks = parents.Keys.Select(p => Groups.RemoveFromGroupAsync(Context.ConnectionId, p));
+            var tasks = parents.Keys.Select(p =>
+                Groups.RemoveFromGroupAsync(Context.ConnectionId, p)
+            );
             return Task.WhenAll(tasks);
         }
         Console.WriteLine("Disconnected");
@@ -314,44 +318,60 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         return (content, split[0]);
     }
 
-    public async Task<List<FlashcardCard>> GetAIFlashcards(string prompt)
+    public async Task<List<FlashcardCard>> GetAIFlashcards(string notes)
     {
-        var result = await GetAIResponse(
+        var aiResponse = await GetAIResponse(
             "ministral",
-            [
+            new List<Message>
+            {
                 new Message
                 {
                     userId = "User",
                     date = DateTime.Now,
-                    text = $"Generate as many flashcards as you can from these notes::\n{prompt}",
+                    text =
+                        $"Create up to 10 flashcards from these notes. Format each card as:\nFront: ...\nBack: ...\n\nNotes:\n{notes}",
                 },
-            ]
+            }
         );
-        var jsonDoc = JsonDocument.Parse(result?.text ?? "");
-        string flashcardsText = jsonDoc
-            .RootElement.GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString();
+        Console.WriteLine(aiResponse?.text);
 
-        var lines = flashcardsText.Split("\n");
+        if (string.IsNullOrWhiteSpace(aiResponse?.text))
+            return new List<FlashcardCard>();
+
         var cards = new List<FlashcardCard>();
         FlashcardCard? currentCard = null;
 
-        foreach (var line in lines)
+        foreach (var line in aiResponse.text.Split("\n"))
         {
-            if (line.StartsWith("**Front:**") || line.Contains("Front:"))
+            var trimmed = line.Trim();
+
+            // Handle bold Markdown **Front:** or plain Front:
+            if (
+                trimmed.StartsWith("Front:", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("**Front:**", StringComparison.OrdinalIgnoreCase)
+            )
             {
-                currentCard = new FlashcardCard();
-                currentCard.front = line.Replace("**Front:**", "").Replace("Front:", "").Trim();
-                currentCard.front = new Regex(@"^\s*\d+\.\s*")
-                    .Replace(currentCard.front, "")
-                    .Trim();
+                currentCard = new FlashcardCard
+                {
+                    front = trimmed
+                        .Replace("Front:", "", StringComparison.OrdinalIgnoreCase)
+                        .Replace("**", "")
+                        .Trim(),
+                };
             }
-            else if (line.StartsWith("**Back:**") || line.Contains("Back:"))
+            else if (
+                (
+                    trimmed.StartsWith("Back:", StringComparison.OrdinalIgnoreCase)
+                    || trimmed.StartsWith("**Back:**", StringComparison.OrdinalIgnoreCase)
+                )
+                && currentCard != null
+            )
             {
-                currentCard!.back = line.Replace("**Back:**", "").Replace("Back:", "").Trim();
-                currentCard.back = new Regex(@"^\s*\d+\.\s*").Replace(currentCard.back, "").Trim();
+                currentCard.back = trimmed
+                    .Replace("Back:", "", StringComparison.OrdinalIgnoreCase)
+                    .Replace("**", "")
+                    .Trim();
+
                 cards.Add(currentCard);
                 currentCard = null;
             }
@@ -367,12 +387,12 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         {
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
                 "Bearer",
-                "Vsf0g0De4A5r0H1sWqBhI6X9qjN0R4sO"
+                "rqtkZkCk4gYJ96MTbyqzYxDnPsZlLvP9"
             );
 
             var requestBody = new
             {
-                model = "ministral-8b-2410",
+                model = "ministral-14b-latest",
                 messages = msgs.Select(
                         (x) =>
                             new
@@ -394,7 +414,14 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
                 "https://api.mistral.ai/v1/chat/completions",
                 content
             );
-            res = await response.Content.ReadAsStringAsync();
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            res =
+                doc.RootElement.GetProperty("choices")[0]
+                    .GetProperty("message")
+                    .GetProperty("content")
+                    .GetString()
+                ?? "";
         }
         else
         {
@@ -614,7 +641,9 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
     public async Task<ClassThreadComment> CreateClassThreadComment(ClassThreadComment comment)
     {
         comment.date ??= DateTime.Now;
-        var commentId = string.IsNullOrWhiteSpace(comment.id) ? Guid.NewGuid().ToString("N") : comment.id!;
+        var commentId = string.IsNullOrWhiteSpace(comment.id)
+            ? Guid.NewGuid().ToString("N")
+            : comment.id!;
         RecordId id = ("class_thread_comment", commentId);
 
         if (string.IsNullOrWhiteSpace(comment.parentCommentId))
@@ -718,7 +747,9 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public async Task<Assignment> CreateAssignment(Assignment ass)
     {
-        var assignmentId = string.IsNullOrWhiteSpace(ass.id) ? Guid.NewGuid().ToString("N") : ass.id!;
+        var assignmentId = string.IsNullOrWhiteSpace(ass.id)
+            ? Guid.NewGuid().ToString("N")
+            : ass.id!;
         // Options seem to be just broken right now so I'm going to instead use this BS system
         if (ass.due is null && ass.maxMark is null)
         {
@@ -791,7 +822,9 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
     public async Task<List<Assignment>> GetAssignments(string classId)
     {
         await dbClient.Query($"UPDATE assignment UNSET due WHERE due = NULL OR due = NONE;");
-        await dbClient.Query($"UPDATE assignment UNSET maxMark WHERE maxMark = NULL OR maxMark = NONE;");
+        await dbClient.Query(
+            $"UPDATE assignment UNSET maxMark WHERE maxMark = NULL OR maxMark = NONE;"
+        );
         var result = await dbClient.Query(
             $"SELECT * FROM assignment WHERE classId = {classId} ORDER BY due ASC;"
         );
