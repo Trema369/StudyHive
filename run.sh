@@ -18,7 +18,7 @@ sleep 3
 
 echo "Starting Frontend..."
 cd frontend
-npm run dev -- --hostname 127.0.0.1 &
+npm run dev &
 FRONTEND_PID=$!
 cd ..
 

@@ -10,6 +10,7 @@ public class UploadsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Attachment>> Upload([FromForm] IFormFile? file)
     {
+        Console.WriteLine("Upload endpoint hit");
         if (file is null || file.Length == 0)
             return BadRequest(new { message = "No file provided" });
 

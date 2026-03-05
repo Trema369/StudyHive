@@ -1,50 +1,50 @@
-'use client';
+'use client'
 
-import { useCallback, useState } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Upload } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { uploadFile, Attachment } from '@/lib/uploads';
+import { useCallback, useState } from 'react'
+import { useDropzone } from 'react-dropzone'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Upload } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { uploadFile, Attachment } from '@/lib/uploads'
 
 type FileDropzoneProps = {
-    onUploadComplete: (attachments: Attachment[]) => void;
-};
+    onUploadComplete: (attachments: Attachment[]) => void
+}
 
 export function FileDropzone({ onUploadComplete }: FileDropzoneProps) {
-    const [files, setFiles] = useState<File[]>([]);
-    const [isUploading, setIsUploading] = useState(false);
+    const [files, setFiles] = useState<File[]>([])
+    const [isUploading, setIsUploading] = useState(false)
 
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE!;
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE!
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
-        setFiles(acceptedFiles);
-    }, []);
+        setFiles(acceptedFiles)
+    }, [])
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
-    });
+    })
 
     const handleUpload = async () => {
-        if (files.length === 0) return;
+        if (files.length === 0) return
 
-        setIsUploading(true);
+        setIsUploading(true)
 
         try {
             const results = await Promise.all(
-                files.map((file) => uploadFile(apiBase, file))
-            );
+                files.map((file) => uploadFile(apiBase, file)),
+            )
 
-            onUploadComplete(results); // 🔥 send to parent
-            setFiles([]);
+            onUploadComplete(results)
+            setFiles([])
         } catch (err) {
-            console.error(err);
-            alert('Upload failed');
+            console.error(err)
+            alert('Upload failed')
         } finally {
-            setIsUploading(false);
+            setIsUploading(false)
         }
-    };
+    }
 
     return (
         <Card
@@ -52,7 +52,7 @@ export function FileDropzone({ onUploadComplete }: FileDropzoneProps) {
             className={cn(
                 'relative cursor-pointer border-2 border-dashed transition-colors duration-200',
                 'w-full max-w-4xl mx-auto h-80 flex items-center justify-center',
-                isDragActive ? 'border-primary bg-secondary/50' : 'border-muted'
+                isDragActive ? 'border-primary bg-secondary/50' : 'border-muted',
             )}
         >
             <CardContent className="flex flex-col items-center justify-center p-10 text-center">
@@ -61,9 +61,7 @@ export function FileDropzone({ onUploadComplete }: FileDropzoneProps) {
 
                 {files.length > 0 ? (
                     <div>
-                        <p className="font-medium">
-                            {files.length} file(s) selected
-                        </p>
+                        <p className="font-medium">{files.length} file(s) selected</p>
                         <ul className="text-sm text-muted-foreground mt-2">
                             {files.map((file, i) => (
                                 <li key={i}>{file.name}</li>
@@ -90,8 +88,8 @@ export function FileDropzone({ onUploadComplete }: FileDropzoneProps) {
                 <Button
                     type="button"
                     onClick={(e) => {
-                        e.stopPropagation();
-                        handleUpload();
+                        e.stopPropagation()
+                        handleUpload()
                     }}
                     disabled={isUploading || files.length === 0}
                 >
@@ -99,5 +97,5 @@ export function FileDropzone({ onUploadComplete }: FileDropzoneProps) {
                 </Button>
             </div>
         </Card>
-    );
+    )
 }
