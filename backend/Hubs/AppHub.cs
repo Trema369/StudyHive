@@ -380,6 +380,31 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         return cards;
     }
 
+    public async Task<string> GetAISummary(string notes)
+    {
+        var aiResponse = await GetAIResponse(
+            "ministral",
+            new List<Message>
+            {
+                new Message
+                {
+                    userId = "User",
+                    date = DateTime.Now,
+                    text =
+                        $"Summarize the following notes clearly for studying. "
+                        + $"Use concise bullet points and keep the important concepts.\n\nNotes:\n{notes}",
+                },
+            }
+        );
+
+        Console.WriteLine(aiResponse?.text);
+
+        if (string.IsNullOrWhiteSpace(aiResponse?.text))
+            return "";
+
+        return aiResponse.text.Trim();
+    }
+
     public async Task<Message?> GetAIResponse(string model, List<Message> msgs)
     {
         var res = "";
