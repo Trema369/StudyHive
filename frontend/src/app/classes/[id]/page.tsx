@@ -711,12 +711,13 @@ export default function ClassDetailPage() {
   const pinnedLinks = (clss?.pinnedLinks ?? []).filter(
     (x) => (x.title ?? "").trim() && (x.url ?? "").trim(),
   );
+  const accentColor = clss?.accentColor ?? "#3b82f6";
 
   return (
     <main className="mx-auto max-w-6xl min-h-screen overflow-y-auto p-6 space-y-6 py-30">
       <section
         className="rounded-lg border p-4 space-y-2"
-        style={{ borderTop: `6px solid ${clss?.accentColor ?? "#3b82f6"}` }}
+        style={{ borderTop: `6px solid ${accentColor}` }}
       >
         <h1 className="text-3xl font-semibold">{clss?.name ?? "Colony"}</h1>
         <MarkdownContent
@@ -732,6 +733,7 @@ export default function ClassDetailPage() {
                 target="_blank"
                 rel="noreferrer"
                 className="block text-sm underline text-blue-600 dark:text-blue-400"
+                style={{ color: accentColor }}
               >
                 {link.title}
               </a>
@@ -744,24 +746,44 @@ export default function ClassDetailPage() {
         <Button
           variant={tab === "threads" ? "default" : "outline"}
           onClick={() => setTab("threads")}
+          style={
+            tab === "threads"
+              ? { backgroundColor: accentColor, borderColor: accentColor }
+              : undefined
+          }
         >
           Threads
         </Button>
         <Button
           variant={tab === "chat" ? "default" : "outline"}
           onClick={() => setTab("chat")}
+          style={
+            tab === "chat"
+              ? { backgroundColor: accentColor, borderColor: accentColor }
+              : undefined
+          }
         >
           Stream 
         </Button>
         <Button
           variant={tab === "people" ? "default" : "outline"}
           onClick={() => setTab("people")}
+          style={
+            tab === "people"
+              ? { backgroundColor: accentColor, borderColor: accentColor }
+              : undefined
+          }
         >
           People
         </Button>
         <Button
           variant={tab === "work" ? "default" : "outline"}
           onClick={() => setTab("work")}
+          style={
+            tab === "work"
+              ? { backgroundColor: accentColor, borderColor: accentColor }
+              : undefined
+          }
         >
           {isTeacher ? "Assignments" : "Submissions"}
         </Button>
@@ -769,6 +791,11 @@ export default function ClassDetailPage() {
           <Button
             variant={tab === "settings" ? "default" : "outline"}
             onClick={() => setTab("settings")}
+            style={
+              tab === "settings"
+                ? { backgroundColor: accentColor, borderColor: accentColor }
+                : undefined
+            }
           >
             Settings
           </Button>
@@ -800,6 +827,14 @@ export default function ClassDetailPage() {
                   className={`w-full rounded-md border p-3 text-left ${
                     selectedThreadId === t.id ? "bg-muted" : ""
                   }`}
+                  style={
+                    selectedThreadId === t.id
+                      ? {
+                          borderColor: accentColor,
+                          backgroundColor: `${accentColor}22`,
+                        }
+                      : undefined
+                  }
                 >
                   <div className="font-medium">{t.title}</div>
                   <div className="text-sm text-muted-foreground line-clamp-2">
@@ -938,6 +973,7 @@ export default function ClassDetailPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => setReplyToChatMessageId(m.id ?? "")}
+                      style={{ borderColor: accentColor }}
                     >
                       <Reply className="h-4 w-4" />
                     </Button>
@@ -1030,12 +1066,14 @@ export default function ClassDetailPage() {
               variant="outline"
               onClick={() => streamFileInputRef.current?.click()}
               title="Attach files"
+              style={{ borderColor: accentColor }}
             >
               <Paperclip className="h-4 w-4" />
             </Button>
             <Button
               onClick={() => void sendClassMessage()}
               disabled={!userId || uploading}
+              style={{ backgroundColor: accentColor, borderColor: accentColor }}
             >
               <Send className="h-4 w-4" />
             </Button>

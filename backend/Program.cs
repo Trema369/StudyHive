@@ -118,7 +118,6 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS accentColor ON TABLE class TYPE string DEFAULT '#3b82f6';
         DEFINE FIELD IF NOT EXISTS pinnedLinks ON TABLE class TYPE array<object>;
         DEFINE FIELD pinnedLinks ON TABLE class TYPE option<array<object>>;
-        UPDATE class SET pinnedLinks = [] WHERE pinnedLinks = NONE OR pinnedLinks = NULL;
 
         DEFINE TABLE IF NOT EXISTS class_thread_post SCHEMALESS;
         DEFINE TABLE class_thread_post SCHEMALESS PERMISSIONS FULL;
@@ -135,7 +134,7 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS userId ON TABLE class_thread TYPE string;
         DEFINE FIELD IF NOT EXISTS title ON TABLE class_thread TYPE string;
         DEFINE FIELD IF NOT EXISTS text ON TABLE class_thread TYPE string;
-        DEFINE FIELD IF NOT EXISTS attachments ON TABLE class_thread TYPE option<array<object>>;
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE class_thread TYPE array<object>;
         DEFINE FIELD IF NOT EXISTS date ON TABLE class_thread TYPE datetime DEFAULT time::now();
 
         DEFINE TABLE IF NOT EXISTS class_thread_comment SCHEMALESS;
@@ -144,7 +143,7 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS userId ON TABLE class_thread_comment TYPE string;
         DEFINE FIELD parentCommentId ON TABLE class_thread_comment TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS text ON TABLE class_thread_comment TYPE string;
-        DEFINE FIELD IF NOT EXISTS attachments ON TABLE class_thread_comment TYPE option<array<object>>;
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE class_thread_comment TYPE array<object>;
         DEFINE FIELD IF NOT EXISTS date ON TABLE class_thread_comment TYPE datetime DEFAULT time::now();
         UPDATE class_thread_comment UNSET parentCommentId WHERE parentCommentId = NULL OR parentCommentId = NONE;
 
@@ -167,7 +166,7 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS parentId ON TABLE message TYPE string;
         DEFINE FIELD IF NOT EXISTS parentMessageId ON TABLE message TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS text ON TABLE message TYPE string;
-        DEFINE FIELD IF NOT EXISTS attachments ON TABLE message TYPE option<array<object>>;
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE message TYPE array<object>;
         DEFINE FIELD IF NOT EXISTS userId ON TABLE message TYPE string;
         UPDATE message UNSET parentMessageId WHERE parentMessageId = NULL OR parentMessageId = NONE;
 
@@ -178,7 +177,7 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS classId ON TABLE assignment TYPE string;
         DEFINE FIELD IF NOT EXISTS text ON TABLE assignment TYPE string;
         DEFINE FIELD maxMark ON TABLE assignment TYPE option<int>;
-        DEFINE FIELD IF NOT EXISTS attachments ON TABLE assignment TYPE option<array<object>>;
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE assignment TYPE array<object>;
         UPDATE assignment UNSET due WHERE due = NULL OR due = NONE;
         UPDATE assignment UNSET maxMark WHERE maxMark = NULL OR maxMark = NONE;
 
@@ -188,7 +187,57 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS assignmentId ON TABLE submission TYPE string;
         DEFINE FIELD IF NOT EXISTS text ON TABLE submission TYPE string;
         DEFINE FIELD IF NOT EXISTS userId ON TABLE submission TYPE string;
-        DEFINE FIELD IF NOT EXISTS attachments ON TABLE submission TYPE option<array<object>>;
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE submission TYPE array<object>;
+
+        DEFINE TABLE IF NOT EXISTS contribution SCHEMALESS;
+        DEFINE TABLE contribution SCHEMALESS PERMISSIONS FULL;
+        DEFINE FIELD IF NOT EXISTS userId ON TABLE contribution TYPE string;
+        DEFINE FIELD IF NOT EXISTS title ON TABLE contribution TYPE string;
+        DEFINE FIELD IF NOT EXISTS description ON TABLE contribution TYPE string;
+        DEFINE FIELD IF NOT EXISTS category ON TABLE contribution TYPE string;
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE contribution TYPE array<object>;
+        DEFINE FIELD IF NOT EXISTS createdAt ON TABLE contribution TYPE datetime DEFAULT time::now();
+
+        DEFINE TABLE IF NOT EXISTS note_group SCHEMALESS;
+        DEFINE TABLE note_group SCHEMALESS PERMISSIONS FULL;
+        DEFINE FIELD IF NOT EXISTS userId ON TABLE note_group TYPE string;
+        DEFINE FIELD IF NOT EXISTS name ON TABLE note_group TYPE string;
+        DEFINE FIELD IF NOT EXISTS description ON TABLE note_group TYPE string;
+        DEFINE FIELD IF NOT EXISTS labels ON TABLE note_group TYPE array<string>;
+        DEFINE FIELD IF NOT EXISTS accentColor ON TABLE note_group TYPE string DEFAULT '#3b82f6';
+        DEFINE FIELD IF NOT EXISTS isPublic ON TABLE note_group TYPE bool DEFAULT false;
+        DEFINE FIELD IF NOT EXISTS code ON TABLE note_group TYPE string;
+        DEFINE FIELD sourceGroupId ON TABLE note_group TYPE option<string>;
+        DEFINE FIELD fetchedAt ON TABLE note_group TYPE option<datetime>;
+        DEFINE FIELD IF NOT EXISTS createdAt ON TABLE note_group TYPE datetime DEFAULT time::now();
+        UPDATE note_group SET isPublic = false WHERE isPublic = NONE OR isPublic = NULL;
+
+        DEFINE TABLE IF NOT EXISTS note SCHEMALESS;
+        DEFINE TABLE note SCHEMALESS PERMISSIONS FULL;
+        DEFINE FIELD IF NOT EXISTS groupId ON TABLE note TYPE string;
+        DEFINE FIELD IF NOT EXISTS userId ON TABLE note TYPE string;
+        DEFINE FIELD IF NOT EXISTS title ON TABLE note TYPE string;
+        DEFINE FIELD IF NOT EXISTS content ON TABLE note TYPE string;
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE note TYPE array<object>;
+        DEFINE FIELD IF NOT EXISTS updatedAt ON TABLE note TYPE datetime DEFAULT time::now();
+
+        DEFINE TABLE IF NOT EXISTS todo_item SCHEMALESS;
+        DEFINE TABLE todo_item SCHEMALESS PERMISSIONS FULL;
+        DEFINE FIELD IF NOT EXISTS userId ON TABLE todo_item TYPE string;
+        DEFINE FIELD IF NOT EXISTS title ON TABLE todo_item TYPE string;
+        DEFINE FIELD IF NOT EXISTS description ON TABLE todo_item TYPE string;
+        DEFINE FIELD IF NOT EXISTS status ON TABLE todo_item TYPE string DEFAULT 'todo';
+        DEFINE FIELD IF NOT EXISTS priority ON TABLE todo_item TYPE string DEFAULT 'medium';
+        DEFINE FIELD dueAt ON TABLE todo_item TYPE option<datetime>;
+        DEFINE FIELD IF NOT EXISTS labels ON TABLE todo_item TYPE array<string>;
+        DEFINE FIELD IF NOT EXISTS checklist ON TABLE todo_item TYPE array<object>;
+        DEFINE FIELD linkedGroupId ON TABLE todo_item TYPE option<string>;
+        DEFINE FIELD linkedNoteId ON TABLE todo_item TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS createdAt ON TABLE todo_item TYPE datetime DEFAULT time::now();
+        DEFINE FIELD IF NOT EXISTS updatedAt ON TABLE todo_item TYPE datetime DEFAULT time::now();
+        UPDATE todo_item UNSET dueAt WHERE dueAt = NULL OR dueAt = NONE;
+        UPDATE todo_item UNSET linkedGroupId WHERE linkedGroupId = NULL OR linkedGroupId = NONE;
+        UPDATE todo_item UNSET linkedNoteId WHERE linkedNoteId = NULL OR linkedNoteId = NONE;
 
         DEFINE TABLE IF NOT EXISTS quiz SCHEMALESS;
         DEFINE FIELD IF NOT EXISTS name ON TABLE quiz TYPE string;
