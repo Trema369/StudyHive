@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,6 +15,11 @@ import {
 import { getAuthUser } from "@/lib/auth";
 import { MarkdownContent } from "@/components/web/markdown-content";
 import { MarkdownEditor } from "@/components/web/markdown-editor";
+import {
+  clearFlashcardDraft,
+  readFlashcardDraft,
+  type FlashcardDraft,
+} from "@/lib/ai-handoff";
 
 export type FlashcardSet = {
   id?: string;
@@ -28,6 +34,7 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5082";
 
 export default function FlashcardsPage() {
+  const router = useRouter();
   const [userId, setUserId] = useState("");
   const [sets, setSets] = useState<FlashcardSet[]>([]);
   const [discoverSets, setDiscoverSets] = useState<FlashcardSet[]>([]);
@@ -39,6 +46,9 @@ export default function FlashcardsPage() {
   const [published, setPublished] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [search, setSearch] = useState("");
+  const [incomingDraft, setIncomingDraft] = useState<FlashcardDraft | null>(
+    null,
+  );
 
   const syncAuth = () => setUserId(getAuthUser()?.id ?? "");
 
@@ -68,12 +78,22 @@ export default function FlashcardsPage() {
   }, []);
 
   useEffect(() => {
+    const draft = readFlashcardDraft();
+    if (!draft) return;
+    setIncomingDraft(draft);
+    setDialogMode("create");
+    setDialogOpen(true);
+    setName(draft.name || "AI Flashcards");
+    setDescription(draft.description || "");
+  }, []);
+
+  useEffect(() => {
     void loadData();
   }, [userId, search]);
 
   const createSet = async () => {
     if (!userId || !name.trim() || !description.trim()) return;
-    await fetch(`${API_BASE}/api/flashcards`, {
+    const createdRes = await fetch(`${API_BASE}/api/flashcards`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -83,12 +103,31 @@ export default function FlashcardsPage() {
         published,
       }),
     });
+    const created = (await createdRes.json()) as FlashcardSet;
+
+    if (incomingDraft?.cards?.length && created.id) {
+      for (const card of incomingDraft.cards) {
+        if (!card.front?.trim() || !card.back?.trim()) continue;
+        await fetch(`${API_BASE}/api/flashcards/${created.id}/cards`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            front: card.front.trim(),
+            back: card.back.trim(),
+          }),
+        });
+      }
+      clearFlashcardDraft();
+      setIncomingDraft(null);
+      setDialogOpen(false);
+      router.push(`/flashcards/${created.id}`);
+      return;
+    }
 
     setName("");
     setDescription("");
     setPublished(false);
     setDialogOpen(false);
-
     await loadData();
   };
 
@@ -131,6 +170,12 @@ export default function FlashcardsPage() {
             className="max-w-sm"
           />
         </div>
+        {incomingDraft && (
+          <p className="text-sm text-muted-foreground">
+            AI draft detected: {incomingDraft.cards.length} cards will be added
+            to your next created set.
+          </p>
+        )}
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">

@@ -7,6 +7,7 @@ import { MarkdownEditor } from "@/components/web/markdown-editor";
 import { MarkdownContent } from "@/components/web/markdown-content";
 import { AttachmentPreview } from "@/components/web/attachment-preview";
 import { Attachment, uploadFile } from "@/lib/uploads";
+import { clearNoteDraft, readNoteDraft } from "@/lib/ai-handoff";
 import {
   Dialog,
   DialogContent,
@@ -117,6 +118,7 @@ export default function NotesPage() {
   const [todoDueAt, setTodoDueAt] = useState("");
   const [todoLabels, setTodoLabels] = useState("");
   const [todoChecklist, setTodoChecklist] = useState<TodoChecklistItem[]>([]);
+  const [importingDraft, setImportingDraft] = useState(false);
 
   const selectedGroup = groups.find((x) => x.id === selectedGroupId) ?? null;
   const selectedNote = notes.find((x) => x.id === selectedNoteId) ?? null;
@@ -180,6 +182,51 @@ export default function NotesPage() {
     void loadGroups();
     void loadTodos();
   }, [userId]);
+
+  useEffect(() => {
+    const importDraft = async () => {
+      if (!userId || importingDraft) return;
+      const draft = readNoteDraft();
+      if (!draft) return;
+      setImportingDraft(true);
+      try {
+        const groupRes = await fetch(`${API_BASE}/api/notes/groups`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            name: draft.groupName || "AI Summaries",
+            description: draft.groupDescription || "",
+            labels: ["ai", "summary"],
+            accentColor: "#3b82f6",
+            isPublic: false,
+          }),
+        });
+        if (!groupRes.ok) return;
+        const createdGroup = (await groupRes.json()) as NoteGroup;
+        if (!createdGroup.id) return;
+
+        await fetch(`${API_BASE}/api/notes/notes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            groupId: createdGroup.id,
+            userId,
+            title: draft.noteTitle || "AI Summary",
+            content: draft.noteContent || "",
+            attachments: [],
+          }),
+        });
+
+        clearNoteDraft();
+        await loadGroups();
+        setSelectedGroupId(createdGroup.id);
+      } finally {
+        setImportingDraft(false);
+      }
+    };
+    void importDraft();
+  }, [userId, importingDraft]);
 
   useEffect(() => {
     void loadNotes(selectedGroupId);
@@ -1004,7 +1051,7 @@ export default function NotesPage() {
                   variant="destructive"
                   onClick={() => void deleteGroup()}
                 >
-                  Delete group
+                  Delete
                 </Button>
               </div>
             </>

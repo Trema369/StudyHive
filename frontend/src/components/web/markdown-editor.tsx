@@ -25,19 +25,33 @@ export function MarkdownEditor({
   const editorHeight = Math.max(minRows * 24 + 140, 220);
 
   return (
-    <div data-color-mode={colorMode} className={`w-full min-w-0 ${className}`}>
+    <div
+      data-color-mode={colorMode}
+      className={`studyhive-md-editor w-full min-w-0 ${className}`}
+    >
       <MDEditor
         value={value}
         onChange={(next) => onChange(next ?? "")}
         preview="live"
         height={editorHeight}
         visibleDragbar={false}
-        style={{ width: "100%", minWidth: 0 }}
+        style={{ width: "100%", minWidth: 0, backgroundColor: "transparent" }}
         textareaProps={{
           placeholder,
           rows: minRows,
         }}
       />
+      <style jsx global>{`
+        .studyhive-md-editor .w-md-editor,
+        .studyhive-md-editor .w-md-editor-toolbar,
+        .studyhive-md-editor .w-md-editor-content,
+        .studyhive-md-editor .w-md-editor-input,
+        .studyhive-md-editor .w-md-editor-preview,
+        .studyhive-md-editor .wmde-markdown,
+        .studyhive-md-editor .wmde-markdown-var {
+          background-color: transparent !important;
+        }
+      `}</style>
     </div>
   );
 }
