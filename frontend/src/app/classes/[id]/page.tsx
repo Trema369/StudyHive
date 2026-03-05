@@ -20,7 +20,16 @@ import { MarkdownContent } from "@/components/web/markdown-content";
 import { MarkdownEditor } from "@/components/web/markdown-editor";
 import { Attachment, uploadFile } from "@/lib/uploads";
 import { AttachmentPreview } from "@/components/web/attachment-preview";
-import { Paperclip, CirclePlus, MessageCircle, Reply, Save, Edit, Send, X} from "lucide-react";
+import {
+  Paperclip,
+  CirclePlus,
+  MessageCircle,
+  Reply,
+  Save,
+  Edit,
+  Send,
+  X,
+} from "lucide-react";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5082";
@@ -149,8 +158,10 @@ export default function ClassDetailPage() {
     Record<string, Submission[]>
   >({});
   const [markInput, setMarkInput] = useState<Record<string, string>>({});
-  const [showSubmissionComposerByAssignment, setShowSubmissionComposerByAssignment] =
-    useState<Record<string, boolean>>({});
+  const [
+    showSubmissionComposerByAssignment,
+    setShowSubmissionComposerByAssignment,
+  ] = useState<Record<string, boolean>>({});
   const [submissionText, setSubmissionText] = useState<Record<string, string>>(
     {},
   );
@@ -276,9 +287,7 @@ export default function ClassDetailPage() {
           const res = await fetch(
             `${API_BASE}/api/classes/assignments/${x.id}/submissions`,
           );
-          const items = res.ok
-            ? await readJsonSafe<Submission[]>(res, [])
-            : [];
+          const items = res.ok ? await readJsonSafe<Submission[]>(res, []) : [];
           return [x.id as string, items] as const;
         }),
     );
@@ -364,13 +373,16 @@ export default function ClassDetailPage() {
       });
     });
 
-    connection.on("ReceiveClassThreadComment", (comment: ClassThreadComment) => {
-      if (comment.threadId !== selectedThreadIdRef.current) return;
-      setThreadComments((prev) => {
-        if (comment.id && prev.some((x) => x.id === comment.id)) return prev;
-        return [...prev, comment];
-      });
-    });
+    connection.on(
+      "ReceiveClassThreadComment",
+      (comment: ClassThreadComment) => {
+        if (comment.threadId !== selectedThreadIdRef.current) return;
+        setThreadComments((prev) => {
+          if (comment.id && prev.some((x) => x.id === comment.id)) return prev;
+          return [...prev, comment];
+        });
+      },
+    );
 
     const start = async () => {
       try {
@@ -380,8 +392,7 @@ export default function ClassDetailPage() {
         await connection.invoke("ConnectToChat", `class-threads-${classId}`);
       } catch (err) {
         // TODO Come up with a better way of dealing with this, kinda sketchy ngl
-        const message =
-          err instanceof Error ? err.message : String(err ?? "");
+        const message = err instanceof Error ? err.message : String(err ?? "");
         const isExpectedRace =
           cancelled ||
           message.includes("before stop() was called") ||
@@ -399,8 +410,7 @@ export default function ClassDetailPage() {
       connection.off("ReceiveMessage");
       connection.off("ReceiveClassThread");
       connection.off("ReceiveClassThreadComment");
-      void connection.stop().catch(() => {
-      });
+      void connection.stop().catch(() => {});
       classConnectionRef.current = null;
     };
   }, [classId, chatParentId]);
@@ -412,8 +422,7 @@ export default function ClassDetailPage() {
 
     void connection
       .invoke("ConnectToChat", `thread-comments-${selectedThreadId}`)
-      .catch(() => {
-      });
+      .catch(() => {});
   }, [selectedThreadId]);
 
   useEffect(() => {
@@ -593,7 +602,10 @@ export default function ClassDetailPage() {
   };
 
   const startEditSubmission = (assignmentId: string, sub: Submission) => {
-    setEditingSubmissionId((prev) => ({ ...prev, [assignmentId]: sub.id ?? "" }));
+    setEditingSubmissionId((prev) => ({
+      ...prev,
+      [assignmentId]: sub.id ?? "",
+    }));
     setSubmissionText((prev) => ({ ...prev, [assignmentId]: sub.text ?? "" }));
     setSubmissionAttachments((prev) => ({
       ...prev,
@@ -681,9 +693,10 @@ export default function ClassDetailPage() {
 
   const resolveReplyTarget = (parentMessageId?: string) => {
     if (!parentMessageId) return null;
-    if (chatMessageById[parentMessageId]) return chatMessageById[parentMessageId];
+    if (chatMessageById[parentMessageId])
+      return chatMessageById[parentMessageId];
     const shortId = parentMessageId.includes(":")
-      ? parentMessageId.split(":").pop() ?? parentMessageId
+      ? (parentMessageId.split(":").pop() ?? parentMessageId)
       : parentMessageId;
     if (chatMessageById[shortId]) return chatMessageById[shortId];
     const prefixed = `message:${parentMessageId}`;
@@ -763,7 +776,7 @@ export default function ClassDetailPage() {
               : undefined
           }
         >
-          Stream 
+          Stream
         </Button>
         <Button
           variant={tab === "people" ? "default" : "outline"}
@@ -893,23 +906,23 @@ export default function ClassDetailPage() {
                         minRows={3}
                       />
                       <div className="flex gap-2">
-                      <Button
-                        onClick={() => void createComment()}
-                        disabled={!userId}
-                      >
-                        Comment
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() =>
-                          setOpenReplyEditors((prev) => ({
-                            ...prev,
-                            __root__: false,
-                          }))
-                        }
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
+                        <Button
+                          onClick={() => void createComment()}
+                          disabled={!userId}
+                        >
+                          Comment
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            setOpenReplyEditors((prev) => ({
+                              ...prev,
+                              __root__: false,
+                            }))
+                          }
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -954,15 +967,15 @@ export default function ClassDetailPage() {
                     {displayName(m.userId)}
                   </div>
                   {m.parentMessageId && replyTarget && (
-                      <div className="mb-2 rounded border-l-4 border-muted-foreground/40 bg-muted/40 p-2 text-xs text-muted-foreground">
-                        Replying to {displayName(replyTarget.userId)}:{" "}
-                        {(
-                          splitThink(replyTarget.text).content ||
-                          replyTarget.text ||
-                          ""
-                        ).slice(0, 120)}
-                      </div>
-                    )}
+                    <div className="mb-2 rounded border-l-4 border-muted-foreground/40 bg-muted/40 p-2 text-xs text-muted-foreground">
+                      Replying to {displayName(replyTarget.userId)}:{" "}
+                      {(
+                        splitThink(replyTarget.text).content ||
+                        replyTarget.text ||
+                        ""
+                      ).slice(0, 120)}
+                    </div>
+                  )}
                   <MarkdownContent
                     className="prose prose-sm max-w-none dark:prose-invert"
                     content={parsed.content || m.text}
@@ -1013,9 +1026,11 @@ export default function ClassDetailPage() {
           )}
           {replyToChatMessageId && chatMessageById[replyToChatMessageId] && (
             <div className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
-              Replying to {displayName(chatMessageById[replyToChatMessageId].userId)}:{" "}
+              Replying to{" "}
+              {displayName(chatMessageById[replyToChatMessageId].userId)}:{" "}
               {(
-                splitThink(chatMessageById[replyToChatMessageId].text).content ||
+                splitThink(chatMessageById[replyToChatMessageId].text)
+                  .content ||
                 chatMessageById[replyToChatMessageId].text ||
                 ""
               ).slice(0, 120)}
@@ -1125,13 +1140,17 @@ export default function ClassDetailPage() {
       {tab === "work" && (
         <section className="rounded-lg border p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-medium">{isTeacher ? "Assignments" : "Submissions"}</h2>
-            {isTeacher && (<Button
-              onClick={() => setAssignmentDialogOpen(true)}
-              disabled={!userId}
-            >
-              <CirclePlus className="h-4 w-4" />
-            </Button>)}
+            <h2 className="text-xl font-medium">
+              {isTeacher ? "Assignments" : "Submissions"}
+            </h2>
+            {isTeacher && (
+              <Button
+                onClick={() => setAssignmentDialogOpen(true)}
+                disabled={!userId}
+              >
+                <CirclePlus className="h-4 w-4" />
+              </Button>
+            )}
           </div>
 
           {isTeacher && editingAssignmentId && (
@@ -1159,7 +1178,9 @@ export default function ClassDetailPage() {
                 onChange={(e) => setEditAssignmentMaxMark(e.target.value)}
               />
               <div className="flex gap-2">
-                <Button onClick={saveEditAssignment}><Save className="h-4 w-4" /></Button>
+                <Button onClick={saveEditAssignment}>
+                  <Save className="h-4 w-4" />
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -1186,7 +1207,8 @@ export default function ClassDetailPage() {
               const submissions =
                 submissionsByAssignment[assignment.id ?? ""] ?? [];
               const isSubmissionFromTeacher = (submissionUserId?: string) =>
-                !!submissionUserId && !!clss?.teacherIds?.includes(submissionUserId);
+                !!submissionUserId &&
+                !!clss?.teacherIds?.includes(submissionUserId);
               const visibleSubs = isTeacher
                 ? submissions
                 : submissions.filter(
@@ -1195,10 +1217,13 @@ export default function ClassDetailPage() {
                       (!!s.userId && !!clss?.teacherIds?.includes(s.userId)),
                   );
               const canEditSubmission = (sub: Submission) => {
-                if (!sub.id || !sub.userId || sub.userId !== userId) return false;
+                if (!sub.id || !sub.userId || sub.userId !== userId)
+                  return false;
                 if (isSubmissionFromTeacher(sub.userId)) return true;
                 if (!assignment.due) return true;
-                return new Date().getTime() <= new Date(assignment.due).getTime();
+                return (
+                  new Date().getTime() <= new Date(assignment.due).getTime()
+                );
               };
 
               return (
@@ -1230,9 +1255,12 @@ export default function ClassDetailPage() {
                   )}
 
                   <details
-                    open={!!showSubmissionComposerByAssignment[assignment.id ?? ""]}
+                    open={
+                      !!showSubmissionComposerByAssignment[assignment.id ?? ""]
+                    }
                     onToggle={(e) => {
-                      const isOpen = (e.currentTarget as HTMLDetailsElement).open;
+                      const isOpen = (e.currentTarget as HTMLDetailsElement)
+                        .open;
                       setShowSubmissionComposerByAssignment((prev) => ({
                         ...prev,
                         [assignment.id ?? ""]: isOpen,
@@ -1278,17 +1306,23 @@ export default function ClassDetailPage() {
                           className="min-w-56 flex-1"
                         />
                         <Button
-                          onClick={() => void submitAssignment(assignment.id ?? "")}
+                          onClick={() =>
+                            void submitAssignment(assignment.id ?? "")
+                          }
                           disabled={!userId || uploading}
                         >
-                          {editingSubmissionId[assignment.id ?? ""]
-                            ? <Save className="h-4 w-4" />
-                            : <Send className="h-4 w-4" />}
+                          {editingSubmissionId[assignment.id ?? ""] ? (
+                            <Save className="h-4 w-4" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
                         </Button>
                         {!!editingSubmissionId[assignment.id ?? ""] && (
                           <Button
                             variant="outline"
-                            onClick={() => cancelEditSubmission(assignment.id ?? "")}
+                            onClick={() =>
+                              cancelEditSubmission(assignment.id ?? "")
+                            }
                           >
                             <X className="h-4 w-4" />
                           </Button>
@@ -1489,12 +1523,12 @@ export default function ClassDetailPage() {
           <AttachmentPreview
             attachments={threadAttachments}
             onRemove={(index) =>
-              setThreadAttachments((prev) =>
-                prev.filter((_, i) => i !== index),
-              )
+              setThreadAttachments((prev) => prev.filter((_, i) => i !== index))
             }
           />
-          <Button onClick={createThread}><Send className="h-4 w-4" /></Button>
+          <Button onClick={createThread}>
+            <Send className="h-4 w-4" />
+          </Button>
         </DialogContent>
       </Dialog>
 
@@ -1645,24 +1679,24 @@ function CommentTree(props: {
                     minRows={3}
                   />
                   <div className="flex gap-2">
-                  <Button
-                    onClick={() => c.id && onReply(c.id)}
-                    disabled={!canReply}
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      setOpenReplyEditors((prev) => ({
-                        ...prev,
-                        [c.id ?? ""]: false,
-                      }))
-                    }
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                    <Button
+                      onClick={() => c.id && onReply(c.id)}
+                      disabled={!canReply}
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setOpenReplyEditors((prev) => ({
+                          ...prev,
+                          [c.id ?? ""]: false,
+                        }))
+                      }
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               )}

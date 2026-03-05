@@ -110,20 +110,20 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE TABLE IF NOT EXISTS class SCHEMALESS;
         DEFINE TABLE class SCHEMALESS PERMISSIONS FULL;
         DEFINE FIELD IF NOT EXISTS name ON TABLE class TYPE string;
-        DEFINE FIELD IF NOT EXISTS description ON TABLE class TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS description ON TABLE class TYPE string;
         DEFINE FIELD IF NOT EXISTS code ON TABLE class TYPE string;
         DEFINE FIELD IF NOT EXISTS userIds ON TABLE class TYPE array<string>;
         DEFINE FIELD IF NOT EXISTS teacherIds ON TABLE class TYPE array<string>;
         DEFINE FIELD IF NOT EXISTS isPublic ON TABLE class TYPE bool DEFAULT false;
         DEFINE FIELD IF NOT EXISTS accentColor ON TABLE class TYPE string DEFAULT '#3b82f6';
         DEFINE FIELD IF NOT EXISTS pinnedLinks ON TABLE class TYPE array<object>;
-        DEFINE FIELD pinnedLinks ON TABLE class TYPE option<array<object>>;
+        DEFINE FIELD pinnedLinks ON TABLE class TYPE array<object>;
 
         DEFINE TABLE IF NOT EXISTS class_thread_post SCHEMALESS;
         DEFINE TABLE class_thread_post SCHEMALESS PERMISSIONS FULL;
         DEFINE FIELD IF NOT EXISTS classId ON TABLE class_thread_post TYPE string;
         DEFINE FIELD IF NOT EXISTS userId ON TABLE class_thread_post TYPE string;
-        DEFINE FIELD IF NOT EXISTS title ON TABLE class_thread_post TYPE option<string>;
+        DEFINE FIELD IF NOT EXISTS title ON TABLE class_thread_post TYPE string;
         DEFINE FIELD IF NOT EXISTS text ON TABLE class_thread_post TYPE string;
         DEFINE FIELD IF NOT EXISTS parentPostId ON TABLE class_thread_post TYPE option<string>;
         DEFINE FIELD IF NOT EXISTS date ON TABLE class_thread_post TYPE datetime DEFAULT time::now();
@@ -264,6 +264,10 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS front ON TABLE flashcard_card TYPE string;
         DEFINE FIELD IF NOT EXISTS back ON TABLE flashcard_card TYPE string;
         DEFINE FIELD IF NOT EXISTS flashcardId ON TABLE flashcard_card TYPE string;
+        DEFINE FIELD IF NOT EXISTS frontAttachments ON TABLE flashcard_card TYPE array<object>;
+        DEFINE FIELD IF NOT EXISTS backAttachments ON TABLE flashcard_card TYPE array<object>;
+        UPDATE flashcard_card UNSET frontAttachments WHERE frontAttachments = NULL OR frontAttachments = NONE;
+        UPDATE flashcard_card UNSET backAttachments WHERE backAttachments = NULL OR backAttachments = NONE;
 
         DEFINE ANALYZER flashcard_analyzer TOKENIZERS class, blank FILTERS lowercase, ascii;
         DEFINE INDEX name_index ON TABLE flashcard COLUMNS name SEARCH ANALYZER flashcard_analyzer BM25;

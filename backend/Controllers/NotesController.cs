@@ -1,4 +1,5 @@
 using backend.Shared.Models;
+using backend.Hubs;
 using Microsoft.AspNetCore.Mvc;
 using SurrealDb.Net;
 using SurrealDb.Net.Models;
@@ -11,20 +12,18 @@ namespace backend.Controllers;
 public class NotesController : ControllerBase
 {
     private readonly SurrealDbClient _dbClient;
+    private readonly AppHub _appHub;
 
-    public NotesController(SurrealDbClient dbClient)
+    public NotesController(SurrealDbClient dbClient, AppHub appHub)
     {
         _dbClient = dbClient;
+        _appHub = appHub;
     }
 
     [HttpGet("groups/{userId}")]
     public async Task<ActionResult<List<NoteGroup>>> GetGroups(string userId)
     {
-        var result = await _dbClient.Query(
-            $"SELECT * FROM note_group WHERE userId = {userId} ORDER BY createdAt ASC;"
-        );
-        var rows = result.GetValue<List<DbNoteGroup>>(0) ?? [];
-        return Ok(rows.Select(x => x.ToBase()).ToList());
+        return Ok(await _appHub.GetNoteGroups(userId));
     }
 
     [HttpPost("groups")]
@@ -174,11 +173,7 @@ public class NotesController : ControllerBase
     [HttpGet("group/{groupId}/notes")]
     public async Task<ActionResult<List<Note>>> GetNotes(string groupId)
     {
-        var result = await _dbClient.Query(
-            $"SELECT * FROM note WHERE groupId = {groupId} ORDER BY updatedAt DESC;"
-        );
-        var rows = result.GetValue<List<DbNote>>(0) ?? [];
-        return Ok(rows.Select(x => x.ToBase()).ToList());
+        return Ok(await _appHub.GetNotesForGroup(groupId));
     }
 
     [HttpPost("notes")]
@@ -222,11 +217,7 @@ public class NotesController : ControllerBase
     [HttpGet("todos/{userId}")]
     public async Task<ActionResult<List<TodoItem>>> GetTodos(string userId)
     {
-        var result = await _dbClient.Query(
-            $"SELECT * FROM todo_item WHERE userId = {userId} ORDER BY createdAt DESC;"
-        );
-        var rows = result.GetValue<List<DbTodoItem>>(0) ?? [];
-        return Ok(rows.Select(x => x.ToBase()).ToList());
+        return Ok(await _appHub.GetTodos(userId));
     }
 
     [HttpPost("todos")]

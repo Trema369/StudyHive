@@ -1,6 +1,6 @@
 export async function generateAISummary(notes: string): Promise<string> {
     const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE}/api/AISummary/generate`,
+        `${process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:5082"}/api/AISummary/generate`,
         {
             method: 'POST',
             headers: {

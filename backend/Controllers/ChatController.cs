@@ -21,7 +21,8 @@ namespace backend.Controllers
 
         private static bool IsAdmin(Chat chat, string? userId)
         {
-            return !string.IsNullOrWhiteSpace(userId) && (chat.adminIds ?? []).Contains(userId);
+            var admins = chat.adminIds ?? [];
+            return admins.Contains(userId ?? "");
         }
 
         private async Task<List<string>> ResolveUsernamesToIds(List<string>? usernames)
@@ -97,11 +98,13 @@ namespace backend.Controllers
             if (!IsAdmin(existing, req.requestingUserId))
                 return Forbid();
 
-            existing.name = req.name ?? existing.name;
+            existing.name = existing.isDirect == true ? null : (req.name ?? existing.name);
             existing.accentColor = req.accentColor ?? existing.accentColor;
             existing.adminOnly = req.adminOnly ?? existing.adminOnly;
             if (req.adminIds is not null)
                 existing.adminIds = req.adminIds.Distinct().ToList();
+            else if ((existing.adminIds ?? []).Count == 0 && existing.isDirect == true)
+                existing.adminIds = (existing.userIds ?? []).Distinct().ToList();
 
             return Ok(await _appHub.UpdateChat(existing));
         }

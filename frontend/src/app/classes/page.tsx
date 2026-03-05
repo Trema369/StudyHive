@@ -47,7 +47,6 @@ export default function ClassesPage() {
   const [isPublic, setIsPublic] = useState(false);
   const [accentColor, setAccentColor] = useState("#3b82f6");
   const [joinCode, setJoinCode] = useState("");
-  const [status, setStatus] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "join">("create");
 
@@ -90,12 +89,6 @@ export default function ClassesPage() {
   }, [userId]);
 
   const createClass = async () => {
-    setStatus("");
-    if (!userId) {
-      setStatus("Sign in to create a class");
-      return;
-    }
-
     await fetch(`${API_BASE}/api/classes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -113,22 +106,11 @@ export default function ClassesPage() {
     setName("");
     setDescription("");
     setDialogOpen(false);
-    setStatus("Class created");
     await loadData();
   };
 
   const joinClass = async (codeOverride?: string) => {
-    setStatus("");
-    if (!userId) {
-      setStatus("Sign in to join classes");
-      return;
-    }
-
     const codeToUse = (codeOverride ?? joinCode).trim();
-    if (!codeToUse) {
-      setStatus("Enter a valid signup code");
-      return;
-    }
 
     const res = await fetch(`${API_BASE}/api/classes/join`, {
       method: "POST",
@@ -140,17 +122,15 @@ export default function ClassesPage() {
       setJoinCode("");
       setDialogOpen(false);
     } else {
-      const payload = (await res.json().catch(() => null)) as
-        | { message?: string }
-        | null;
-      setStatus(payload?.message ?? "Unable to join class");
+      const payload = (await res.json().catch(() => null)) as {
+        message?: string;
+      } | null;
     }
 
     await loadData();
   };
 
   const joinPublicClass = async (classId: string) => {
-    setStatus("");
     if (!userId || !classId) return;
     const res = await fetch(`${API_BASE}/api/classes/${classId}/join`, {
       method: "POST",
@@ -158,10 +138,9 @@ export default function ClassesPage() {
       body: JSON.stringify({ userId }),
     });
     if (!res.ok) {
-      const payload = (await res.json().catch(() => null)) as
-        | { message?: string }
-        | null;
-      setStatus(payload?.message ?? "Unable to join class");
+      const payload = (await res.json().catch(() => null)) as {
+        message?: string;
+      } | null;
       return;
     }
     await loadData();
@@ -193,8 +172,6 @@ export default function ClassesPage() {
           </Button>
         </div>
       </section>
-
-      {status && <p className="text-sm text-muted-foreground">{status}</p>}
 
       <section className="rounded-lg border p-4 space-y-3">
         <h2 className="text-xl font-medium">Colonies you are in</h2>
@@ -231,7 +208,9 @@ export default function ClassesPage() {
               const alreadyJoined = !!clss.id && joinedIds.has(clss.id);
               return (
                 <div key={clss.id} className="rounded-lg border p-3">
-                  <h3 className="font-medium">{clss.name ?? "Untitled class"}</h3>
+                  <h3 className="font-medium">
+                    {clss.name ?? "Untitled class"}
+                  </h3>
                   <MarkdownContent
                     className="prose prose-sm max-w-none text-muted-foreground dark:prose-invert"
                     content={clss.description ?? "No description"}

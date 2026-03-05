@@ -24,6 +24,7 @@ import {
   Eye,
   Pencil,
   Paperclip,
+  Settings,
 } from "lucide-react";
 
 const API_BASE =
@@ -592,7 +593,7 @@ export default function NotesPage() {
                   variant="outline"
                   onClick={() => setGroupOptionsOpen(true)}
                 >
-                  Group options
+                  <Settings className="h-4 w-4" />
                 </Button>
                 <Button
                   size="sm"
@@ -929,7 +930,7 @@ export default function NotesPage() {
         <DialogOverlay className="fixed inset-0 bg-black/30 backdrop-blur-md" />
         <DialogContent className="sm:max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto p-6 space-y-4">
           <DialogHeader>
-            <DialogTitle>Group options</DialogTitle>
+            <DialogTitle>Options</DialogTitle>
           </DialogHeader>
           {!selectedGroup ? (
             <p className="text-sm text-muted-foreground">Select a group.</p>
@@ -972,10 +973,6 @@ export default function NotesPage() {
                   <span className="font-mono">
                     {selectedGroup.code ?? "N/A"}
                   </span>
-                </div>
-                <div className="text-muted-foreground">
-                  Codes always allow cloning. Public/private only affects
-                  discoverability.
                 </div>
               </div>
               <div className="flex gap-2">

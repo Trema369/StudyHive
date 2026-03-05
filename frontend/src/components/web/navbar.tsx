@@ -61,6 +61,9 @@ export function Navbar() {
         <Link className={buttonVariants({ variant: "ghost" })} href="/notes">
           Notes
         </Link>
+        <Link className={buttonVariants({ variant: "ghost" })} href="/flashcards">
+          Flashcards
+        </Link>
         <Link className={buttonVariants({ variant: "ghost" })} href="/hive-ai">
           Hive AI
         </Link>

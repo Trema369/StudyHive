@@ -7,6 +7,7 @@ import { Card, CardContent } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { FileDropzone } from './Dropzone';
 import { generateAISummary } from '@/lib/summary';
+import { MarkdownContent } from './markdown-content';
 
 export function SummarizerCardPage() {
     const [fileTexts, setFileTexts] = useState<string[]>([]);
@@ -119,19 +120,18 @@ export function SummarizerCardPage() {
                 )}
 
                 {/* Summary output */}
-                {summary && (
+                (
                     <div className="flex justify-center mt-10">
                         <Card className="w-[800px]">
                             <CardContent className="p-6">
                                 <h2 className="text-xl font-semibold mb-3">
                                     Summary
                                 </h2>
-                                <p className="whitespace-pre-wrap">{summary}</p>
-                                <ReactMarkdown>{summary}</ReactMarkdown>
+                                <MarkdownContent content={summary}/>
                             </CardContent>
                         </Card>
                     </div>
-                )}
+                )
             </section>
         </div>
     );

@@ -171,11 +171,14 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public async Task<Chat> UpdateChat(Chat chat)
     {
-        if (string.IsNullOrWhiteSpace(chat.id))
-            throw new Exception("Chat id is required");
-
         chat.userIds ??= [];
-        chat.adminIds ??= [];
+        if (chat.isDirect ?? false)
+        {
+            chat.adminIds = chat.userIds ?? [];
+        }else
+        {
+            chat.adminIds ??= [];
+        }
         chat.accentColor ??= "#3b82f6";
         chat.adminOnly ??= false;
         chat.isDirect ??= false;
@@ -186,8 +189,9 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         if (string.IsNullOrWhiteSpace(chat.name))
         {
             await dbClient.Query(
-                $"UPDATE {id} SET userIds = {chat.userIds}, adminIds = {chat.adminIds}, accentColor = {chat.accentColor}, adminOnly = {chat.adminOnly.Value}, isDirect = {chat.isDirect.Value} UNSET name;"
+                $"UPDATE {id} SET userIds = {chat.userIds}, adminIds = {chat.adminIds}, accentColor = {chat.accentColor}, adminOnly = {chat.adminOnly.Value}, isDirect = {chat.isDirect.Value};"
             );
+            await dbClient.Query($"UPDATE {id} UNSET name;");
         }
         else
         {
@@ -1137,6 +1141,65 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         {
             return [];
         }
+    }
+
+    public async Task<Flashcard?> GetFlashcardByCode(string code)
+    {
+        var result = await dbClient.Query($"SELECT * FROM flashcard WHERE code = {code} LIMIT 1;");
+        return result.GetValue<List<DbFlashcard>>(0)?.FirstOrDefault()?.ToBase();
+    }
+
+    public async Task<Contribution> CreateContribution(Contribution contribution)
+    {
+        contribution.createdAt ??= DateTime.Now;
+        contribution.attachments ??= [];
+        var created = await dbClient.Create("contribution", new DbContribution(contribution));
+        return created.ToBase();
+    }
+
+    public async Task<List<Contribution>> GetContributions(int limit = 30)
+    {
+        var result = await dbClient.Query(
+            $"SELECT * FROM contribution ORDER BY createdAt DESC LIMIT {limit};"
+        );
+        var rows = result.GetValue<List<DbContribution>>(0) ?? [];
+        return rows.Select(x => x.ToBase()).ToList();
+    }
+
+    public async Task<List<Contribution>> GetContributionsFromUser(string userId)
+    {
+        var result = await dbClient.Query(
+            $"SELECT * FROM contribution WHERE userId = {userId} ORDER BY createdAt DESC;"
+        );
+        var rows = result.GetValue<List<DbContribution>>(0) ?? [];
+        return rows.Select(x => x.ToBase()).ToList();
+    }
+
+    public async Task<List<NoteGroup>> GetNoteGroups(string userId)
+    {
+        var result = await dbClient.Query(
+            $"SELECT * FROM note_group WHERE userId = {userId} ORDER BY createdAt ASC;"
+        );
+        var rows = result.GetValue<List<DbNoteGroup>>(0) ?? [];
+        return rows.Select(x => x.ToBase()).ToList();
+    }
+
+    public async Task<List<Note>> GetNotesForGroup(string groupId)
+    {
+        var result = await dbClient.Query(
+            $"SELECT * FROM note WHERE groupId = {groupId} ORDER BY updatedAt DESC;"
+        );
+        var rows = result.GetValue<List<DbNote>>(0) ?? [];
+        return rows.Select(x => x.ToBase()).ToList();
+    }
+
+    public async Task<List<TodoItem>> GetTodos(string userId)
+    {
+        var result = await dbClient.Query(
+            $"SELECT * FROM todo_item WHERE userId = {userId} ORDER BY createdAt DESC;"
+        );
+        var rows = result.GetValue<List<DbTodoItem>>(0) ?? [];
+        return rows.Select(x => x.ToBase()).ToList();
     }
 
     public async Task<List<Quiz>> SearchQuizzes(string search)

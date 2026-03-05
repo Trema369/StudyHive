@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using backend.Shared.Models;
+
 public class Flashcard
 {
     public string? id { get; set; }
@@ -15,6 +18,8 @@ public class FlashcardCard
     public string? front { get; set; }
     public string? back { get; set; }
     public string? flashcardId { get; set; }
+    public List<Attachment>? frontAttachments { get; set; }
+    public List<Attachment>? backAttachments { get; set; }
     public string? id { get; set; }
     public FlashcardCard() { }
 }

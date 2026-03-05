@@ -1,7 +1,6 @@
 "use client";
 
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import MarkdownPreview from "@uiw/react-markdown-preview";
 
 export function MarkdownContent({
   content,
@@ -11,8 +10,11 @@ export function MarkdownContent({
   className?: string;
 }) {
   return (
-    <div className={className}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content ?? ""}</ReactMarkdown>
+    <div className={className} style={{ backgroundColor: "transparent" }}>
+      <MarkdownPreview
+        source={content ?? ""}
+        style={{ backgroundColor: "transparent" }}
+      />
     </div>
   );
 }

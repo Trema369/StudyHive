@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using SurrealDb.Net.Models;
+using backend.Shared.Models;
 
 public class DbFlashcard : Record
 {
@@ -45,6 +47,8 @@ public class DbFlashcardCard : Record
     public string? front { get; set; }
     public string? back { get; set; }
     public string? flashcardId { get; set; }
+    public List<Attachment>? frontAttachments { get; set; }
+    public List<Attachment>? backAttachments { get; set; }
 
     public DbFlashcardCard() { }
 
@@ -53,6 +57,8 @@ public class DbFlashcardCard : Record
         this.front = que.front;
         this.back = que.back;
         this.flashcardId = que.flashcardId;
+        this.frontAttachments = que.frontAttachments ?? [];
+        this.backAttachments = que.backAttachments ?? [];
         if (que.id is not null)
         {
             this.Id = new RecordIdOfString("flashcard_card", que.id);
@@ -66,8 +72,9 @@ public class DbFlashcardCard : Record
             front = this.front,
             back = this.back,
             flashcardId = this.flashcardId,
+            frontAttachments = this.frontAttachments ?? [],
+            backAttachments = this.backAttachments ?? [],
             id = this.Id?.DeserializeId<string>(),
         };
     }
 }
-
