@@ -991,14 +991,31 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
 
     public async Task<Quiz> CreateQuiz(Quiz quiz)
     {
-        var res = await dbClient.Create("quiz", new DbQuiz(quiz));
-        return res.ToBase();
+        RecordId quizId = ("quiz" , quiz.id ?? Guid.NewGuid().ToString("N"));
+        var timer = quiz.timerMinutes is > 0 ? quiz.timerMinutes : null;
+        if (timer is null) {
+            await dbClient.Query($"CREATE {quizId} SET name = {quiz.name}, cost = {quiz.cost ?? 0f}, published = {quiz.published ?? false}, description = {quiz.description ?? ""}, userId = {quiz.userId}, code = {quiz.code ?? ""};");           
+        } else {
+            await dbClient.Query($"CREATE {quizId} SET name = {quiz.name}, cost = {quiz.cost ?? 0f}, published = {quiz.published ?? false}, description = {quiz.description ?? ""}, userId = {quiz.userId}, code = {quiz.code ?? ""}, timerMinutes = {timer};");
+        }
+
+        var res = await dbClient.Select<DbQuiz>(quizId);
+        return res!.ToBase();        
     }
 
     public async Task<Quiz> UpdateQuiz(Quiz quiz)
     {
-        var res = await dbClient.Update(new DbQuiz(quiz));
-        return res.ToBase();
+        RecordId quizId = ("quiz", quiz.id);
+        var timer = quiz.timerMinutes is > 0 ? quiz.timerMinutes : null;
+
+        if (timer is null) {
+            await dbClient.Query($"UPDATE {quizId} SET name = {quiz.name}, cost = {quiz.cost ?? 0f}, published = {quiz.published ?? false}, description = {quiz.description ?? ""}, userId = {quiz.userId}, code = {quiz.code ?? ""};");           
+        } else {
+            await dbClient.Query($"UPDATE {quizId} SET name = {quiz.name}, cost = {quiz.cost ?? 0f}, published = {quiz.published ?? false}, description = {quiz.description ?? ""}, userId = {quiz.userId}, code = {quiz.code ?? ""}, timerMinutes = {timer};");
+        }
+        
+        var res = await dbClient.Select<DbQuiz>(quizId);
+        return res!.ToBase(); 
     }
 
     public async Task<Question> CreateQuestion(Question q)
@@ -1040,37 +1057,132 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         }
     }
 
+    public async Task<List<QuestionBank>> GetQuestionBanks(string userId)
+    {
+        var result = await dbClient.Query(
+            $"SELECT * FROM question_bank WHERE userId = {userId} ORDER BY name ASC;"
+        );
+        var arr = result.GetValue<List<DbQuestionBank>>(0);
+        return (arr ?? []).Select(x => x.ToBase()).ToList();
+    }
+
+    public async Task<QuestionBank> CreateQuestionBank(QuestionBank bank)
+    {
+        var res = await dbClient.Create("question_bank", new DbQuestionBank(bank));
+        return res.ToBase();
+    }
+
+    public async Task<QuestionBank> UpdateQuestionBank(QuestionBank bank)
+    {
+        var res = await dbClient.Update(new DbQuestionBank(bank));
+        return res.ToBase();
+    }
+
+    public async Task RemoveQuestionBank(string bankId)
+    {
+        await dbClient.Query($"DELETE question_bank_item WHERE bankId = {bankId};");
+        await dbClient.Delete(("question_bank", bankId));
+    }
+
+    public async Task<List<QuestionBankItem>> GetQuestionBankItems(string bankId)
+    {
+        var query = string.IsNullOrWhiteSpace(bankId)
+            ? "SELECT * FROM question_bank_item ORDER BY id ASC;"
+            : $"SELECT * FROM question_bank_item WHERE bankId = {bankId} ORDER BY id ASC;";
+        var result = await dbClient.RawQuery(query);
+        var arr = result.GetValue<List<DbQuestionBankItem>>(0);
+        return (arr ?? []).Select(x => x.ToBase()).ToList();
+    }
+
+    public async Task<QuestionBankItem?> GetQuestionBankItem(string itemId)
+    {
+        var res = await dbClient.Select<DbQuestionBankItem>(("question_bank_item", itemId));
+        return res?.ToBase();
+    }
+
+    public async Task<QuestionBankItem> CreateQuestionBankItem(QuestionBankItem item)
+    {
+        var res = await dbClient.Create("question_bank_item", new DbQuestionBankItem(item));
+        return res.ToBase();
+    }
+
+    public async Task RemoveQuestionBankItem(string itemId)
+    {
+        await dbClient.Delete(("question_bank_item", itemId));
+    }
+
     public async Task<QuizSubmission> SubmitQuiz(QuizSubmission sub)
     {
-        int score = 0;
+        float score = 0f;
+        sub.answers = (sub.answers ?? []).Select(x => (int?)(x ?? -1)).ToList();
+        sub.multiAnswers = (sub.multiAnswers ?? []).Select(x => (x ?? []).Distinct().ToList()).ToList();
+        sub.textAnswers = (sub.textAnswers ?? []).Select(x => (string?)(x ?? "")).ToList();
         if (sub.quizId is not null)
         {
             var qres = await dbClient.Query(
                 $"SELECT * FROM question WHERE quizId = {sub.quizId} ORDER BY id ASC;"
             );
             var qarr = qres.GetValue<List<DbQuestion>>(0);
-            if (qarr is not null && sub.answers is not null)
+            if (qarr is not null)
             {
                 var questions = qarr.Select(x => x.ToBase()).ToList();
-                for (int i = 0; i < questions.Count && i < sub.answers.Count; i++)
+                for (int i = 0; i < questions.Count; i++)
                 {
                     var q = questions[i];
-                    int? correctIndex = null;
-                    if (q.answers is not null)
+                    var qType = q.type?.Trim().ToLowerInvariant() ?? "multiple_choice";
+
+                    if (qType == "fill_gap" || qType == "short_answer")
                     {
-                        for (int ai = 0; ai < q.answers.Count; ai++)
-                        {
-                            var ans = q.answers[ai];
-                            if (ans is not null && ans.isCorrect == true)
-                            {
-                                correctIndex = ai;
-                                break;
-                            }
-                        }
+                        var expected = q.answers?.FirstOrDefault(x => x?.isCorrect == true)?.text;
+                        var givenText = i < sub.textAnswers.Count ? sub.textAnswers[i] : null;
+                        if (
+                            !string.IsNullOrWhiteSpace(expected)
+                            && !string.IsNullOrWhiteSpace(givenText)
+                            && string.Equals(
+                                expected.Trim(),
+                                givenText.Trim(),
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                        )
+                            score += Math.Max(1f, q.answers?.FirstOrDefault(x => x?.isCorrect == true)?.weight ?? 1f);
+                        continue;
                     }
-                    var given = sub.answers[i];
-                    if (correctIndex is not null && given is not null && correctIndex == given)
-                        score++;
+
+                    var allAnswers = q.answers ?? [];
+                    var selected = i < sub.multiAnswers.Count
+                        ? (sub.multiAnswers[i] ?? [])
+                        : [];
+                    if (selected.Count == 0 && i < sub.answers.Count && (sub.answers[i] ?? -1) >= 0)
+                        selected = [sub.answers[i]!.Value];
+
+                    var positiveWeight = 0f;
+                    for (int ai = 0; ai < allAnswers.Count; ai++)
+                    {
+                        var ans = allAnswers[ai];
+                        if (ans?.isCorrect == true)
+                            positiveWeight += Math.Max(0f, ans.weight ?? 1f);
+                    }
+                    if (positiveWeight <= 0f)
+                        positiveWeight = allAnswers.Any(x => x?.isCorrect == true) ? 1f : 0f;
+
+                    float earned = 0f;
+                    foreach (var si in selected.Distinct())
+                    {
+                        if (si < 0 || si >= allAnswers.Count)
+                            continue;
+                        var ans = allAnswers[si];
+                        if (ans is null)
+                            continue;
+                        if (ans.isCorrect == true)
+                            earned += Math.Max(0f, ans.weight ?? 1f);
+                        else
+                            earned -= Math.Max(0f, ans.weight ?? 1f);
+                    }
+                    if (positiveWeight > 0f)
+                    {
+                        var normalized = Math.Clamp(earned / positiveWeight, 0f, 1f);
+                        score += normalized * positiveWeight;
+                    }
                 }
             }
         }
@@ -1250,6 +1362,16 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         }
 
         return [];
+    }
+
+    public async Task<Quiz?> GetQuizByCode(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return null;
+        var result = await dbClient.Query(
+            $"SELECT * FROM quiz WHERE code = {code.Trim()} LIMIT 1;"
+        );
+        return result.GetValue<List<DbQuiz>>(0)?.FirstOrDefault()?.ToBase();
     }
 
     public async Task<List<Flashcard>> SearchFlashcards(string search)

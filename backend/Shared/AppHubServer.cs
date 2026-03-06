@@ -67,6 +67,14 @@ public interface IAppHubServer
     Task<Question> UpdateQuestion(Question q);
     Task RemoveQuestion(string questionId);
     Task<List<Question>> GetQuestions(string quizId);
+    Task<List<QuestionBank>> GetQuestionBanks(string userId);
+    Task<QuestionBank> CreateQuestionBank(QuestionBank bank);
+    Task<QuestionBank> UpdateQuestionBank(QuestionBank bank);
+    Task RemoveQuestionBank(string bankId);
+    Task<List<QuestionBankItem>> GetQuestionBankItems(string bankId);
+    Task<QuestionBankItem?> GetQuestionBankItem(string itemId);
+    Task<QuestionBankItem> CreateQuestionBankItem(QuestionBankItem item);
+    Task RemoveQuestionBankItem(string itemId);
 
     Task<QuizSubmission> SubmitQuiz(QuizSubmission sub);
     Task<List<QuizSubmission>> GetQuizSubmissions(string quizId);
@@ -77,6 +85,7 @@ public interface IAppHubServer
     Task<List<Flashcard>> GetFlashcardsFromUser(string id);
 
     Task<List<Quiz>> SearchQuizzes(string search);
+    Task<Quiz?> GetQuizByCode(string code);
     Task<List<Flashcard>> SearchFlashcards(string search);
     Task<List<User>> SearchUsers(string search);
 

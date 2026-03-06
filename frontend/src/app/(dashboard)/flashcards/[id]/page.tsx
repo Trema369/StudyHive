@@ -7,7 +7,9 @@ import { Input } from "@/components/ui/input";
 import { MarkdownContent } from "@/components/web/markdown-content";
 import { MarkdownEditor } from "@/components/web/markdown-editor";
 import { AttachmentPreview } from "@/components/web/attachment-preview";
+import { AIAppendControls } from "@/components/web/ai-append-controls";
 import { Attachment, uploadFile } from "@/lib/uploads";
+import { generateAIAppend, getAIModels, type AIAppendMode } from "@/lib/ai-append";
 import { getAuthUser } from "@/lib/auth";
 import { FlashcardSet } from "../page";
 
@@ -19,6 +21,95 @@ type FlashCard = {
   frontAttachments?: Attachment[];
   backAttachments?: Attachment[];
 };
+
+type ParsedAICard = { front: string; back: string };
+
+function normalizeCard(front?: string, back?: string): ParsedAICard | null {
+  const f = (front ?? "").trim();
+  const b = (back ?? "").trim();
+  if (!f || !b) return null;
+  return { front: f, back: b };
+}
+
+function parseCardsFromJsonLike(raw: string): ParsedAICard[] {
+  const tryParse = (text: string): unknown => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  };
+
+  const mapped: ParsedAICard[] = [];
+  const pushFromNode = (node: any) => {
+    if (!node || typeof node !== "object") return;
+    const n = normalizeCard(
+      node.front ?? node.question ?? node.prompt,
+      node.back ?? node.answer ?? node.response,
+    );
+    if (n) mapped.push(n);
+  };
+
+  const direct = tryParse(raw);
+  if (Array.isArray(direct)) {
+    direct.forEach(pushFromNode);
+    return mapped;
+  }
+  if (direct && typeof direct === "object") {
+    const cards = (direct as any).cards;
+    if (Array.isArray(cards)) {
+      cards.forEach(pushFromNode);
+      return mapped;
+    }
+    pushFromNode(direct);
+    if (mapped.length > 0) return mapped;
+  }
+
+  const codeBlocks = raw.match(/```(?:json)?\s*([\s\S]*?)```/gi) ?? [];
+  for (const block of codeBlocks) {
+    const stripped = block.replace(/```(?:json)?/i, "").replace(/```$/, "").trim();
+    const parsed = tryParse(stripped);
+    if (Array.isArray(parsed)) parsed.forEach(pushFromNode);
+    else if (parsed && typeof parsed === "object") {
+      const cards = (parsed as any).cards;
+      if (Array.isArray(cards)) cards.forEach(pushFromNode);
+      else pushFromNode(parsed);
+    }
+  }
+  return mapped;
+}
+
+function parseCardsFromLabeledText(raw: string): ParsedAICard[] {
+  const cards: ParsedAICard[] = [];
+
+  const frontBackRegex =
+    /(?:^|\n)\s*(?:card\s*\d+\s*[:.-]?\s*)?(?:front|q(?:uestion)?)\s*:\s*([\s\S]*?)\n\s*(?:back|a(?:nswer)?)\s*:\s*([\s\S]*?)(?=\n\s*(?:card\s*\d+\s*[:.-]?\s*)?(?:front|q(?:uestion)?)\s*:|\n{2,}|$)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = frontBackRegex.exec(raw)) !== null) {
+    const n = normalizeCard(m[1], m[2]);
+    if (n) cards.push(n);
+  }
+  if (cards.length > 0) return cards;
+
+  const qaRegex =
+    /(?:^|\n)\s*(?:\d+[.)-]?\s*)?(?:q(?:uestion)?)\s*[:.-]?\s*([\s\S]*?)\n\s*(?:a(?:nswer)?)\s*[:.-]?\s*([\s\S]*?)(?=\n\s*(?:\d+[.)-]?\s*)?(?:q(?:uestion)?)\s*[:.-]?|\n{2,}|$)/gi;
+  while ((m = qaRegex.exec(raw)) !== null) {
+    const n = normalizeCard(m[1], m[2]);
+    if (n) cards.push(n);
+  }
+  return cards;
+}
+
+function parseAIBulkCards(raw: string): ParsedAICard[] {
+  const fromJson = parseCardsFromJsonLike(raw);
+  const fromLabeled = parseCardsFromLabeledText(raw);
+  const combined = [...fromJson, ...fromLabeled];
+  const unique = new Map<string, ParsedAICard>();
+  for (const c of combined) {
+    unique.set(`${c.front}\u0000${c.back}`, c);
+  }
+  return Array.from(unique.values());
+}
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5082";
@@ -46,6 +137,12 @@ export default function FlashcardSetPage() {
     Attachment[]
   >([]);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
+  const [bulkAIMode, setBulkAIMode] = useState<AIAppendMode>("extrapolate");
+  const [bulkAIModels, setBulkAIModels] = useState<string[]>([]);
+  const [bulkAIModel, setBulkAIModel] = useState("ministral");
+  const [bulkAIPrompt, setBulkAIPrompt] = useState("");
+  const [bulkAILoading, setBulkAILoading] = useState(false);
+  const [bulkAIStatus, setBulkAIStatus] = useState("");
 
   const [studyIndex, setStudyIndex] = useState(0);
   const [showBack, setShowBack] = useState(false);
@@ -93,6 +190,15 @@ export default function FlashcardSetPage() {
   useEffect(() => {
     void loadSet();
   }, [setId]);
+
+  useEffect(() => {
+    void (async () => {
+      const rows = await getAIModels();
+      if (rows.length === 0) return;
+      setBulkAIModels(rows);
+      if (!rows.includes(bulkAIModel)) setBulkAIModel(rows[0]);
+    })();
+  }, []);
 
   const saveSet = async () => {
     if (!canEdit || !setId) return;
@@ -217,6 +323,61 @@ export default function FlashcardSetPage() {
     setShowBack(false);
   };
 
+  const createAIBulkCards = async () => {
+    if (!canEdit || !setId) return;
+    if (bulkAIMode !== "extrapolate" && !bulkAIPrompt.trim()) {
+      setBulkAIStatus("Prompt is required for this mode");
+      return;
+    }
+    setBulkAILoading(true);
+    setBulkAIStatus("");
+    try {
+      const existingCardData = cards
+        .map(
+          (c, i) =>
+            `Card ${i + 1}\nFront: ${c.front ?? ""}\nBack: ${c.back ?? ""}`,
+        )
+        .join("\n\n");
+      const content = existingCardData || "No existing cards yet.";
+      const prompt =
+        bulkAIMode === "prompt"
+          ? `${bulkAIPrompt.trim()}\n\nReturn multiple flashcards as JSON array: [{\"front\":\"...\",\"back\":\"...\"}]. You may also include Front:/Back: blocks as fallback.`
+          : bulkAIMode === "prompt_assisted"
+            ? `${bulkAIPrompt.trim()}\n\nGenerate additional flashcards based on existing cards. Prefer JSON array [{\"front\":\"...\",\"back\":\"...\"}], fallback Front:/Back:.`
+            : "Generate additional flashcards from the existing cards. Prefer JSON array [{\"front\":\"...\",\"back\":\"...\"}], fallback Front:/Back:.";
+      const raw = await generateAIAppend(
+        bulkAIMode,
+        content,
+        prompt,
+        "flashcards",
+        bulkAIModel,
+      );
+      const parsed = parseAIBulkCards(raw);
+      if (parsed.length === 0) {
+        setBulkAIStatus("No parseable flashcards returned by AI (JSON or Front/Back)");
+        return;
+      }
+      for (const card of parsed) {
+        await fetch(`${API_BASE}/api/flashcards/${setId}/cards`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            front: card.front,
+            back: card.back,
+            frontAttachments: [],
+            backAttachments: [],
+          }),
+        });
+      }
+      setBulkAIStatus(`Added ${parsed.length} AI cards`);
+      await loadSet();
+    } catch (e) {
+      setBulkAIStatus(e instanceof Error ? e.message : "Failed to generate cards");
+    } finally {
+      setBulkAILoading(false);
+    }
+  };
+
   return (
     <main className="mx-auto max-w-7xl min-h-screen overflow-y-auto p-6 space-y-6 py-30">
       <section className="rounded-lg border p-4 space-y-3">
@@ -312,6 +473,51 @@ export default function FlashcardSetPage() {
         </section>
       ) : tab === "cards" ? (
         <section className="rounded-lg border p-4 space-y-3">
+          <div className="rounded-md border p-3 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={bulkAIModel}
+                onChange={(e) => setBulkAIModel(e.target.value)}
+                className="rounded-md border bg-background p-2 text-sm"
+              >
+                {bulkAIModels.length === 0 && (
+                  <option value="ministral">ministral</option>
+                )}
+                {bulkAIModels.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={bulkAIMode}
+                onChange={(e) => setBulkAIMode(e.target.value as AIAppendMode)}
+                className="rounded-md border bg-background p-2 text-sm"
+              >
+                <option value="extrapolate">Extrapolate</option>
+                <option value="prompt_assisted">Prompt assisted</option>
+                <option value="prompt">Prompt only</option>
+              </select>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void createAIBulkCards()}
+                disabled={bulkAILoading}
+              >
+                {bulkAILoading ? "Generating..." : "AI Add Multiple Cards"}
+              </Button>
+            </div>
+            {bulkAIMode !== "extrapolate" && (
+              <Input
+                value={bulkAIPrompt}
+                onChange={(e) => setBulkAIPrompt(e.target.value)}
+                placeholder="Prompt"
+              />
+            )}
+            {!!bulkAIStatus && (
+              <p className="text-xs text-muted-foreground">{bulkAIStatus}</p>
+            )}
+          </div>
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">Cards ({cards.length})</h2>
             <Button
@@ -331,11 +537,25 @@ export default function FlashcardSetPage() {
                   placeholder="Front"
                   minRows={4}
                 />
+                <AIAppendControls
+                  domain="flashcard front"
+                  content={editingFront}
+                  onAppend={(text) =>
+                    setEditingFront((prev) => (prev ? `${prev}\n${text}` : text))
+                  }
+                />
                 <MarkdownEditor
                   value={editingBack}
                   onChange={setEditingBack}
                   placeholder="Back"
                   minRows={4}
+                />
+                <AIAppendControls
+                  domain="flashcard back"
+                  content={editingBack}
+                  onAppend={(text) =>
+                    setEditingBack((prev) => (prev ? `${prev}\n${text}` : text))
+                  }
                 />
                 <label className="inline-flex">
                   <input
@@ -421,11 +641,29 @@ export default function FlashcardSetPage() {
                         placeholder="Front"
                         minRows={4}
                       />
+                      <AIAppendControls
+                        domain="flashcard front"
+                        content={editingFront}
+                        onAppend={(text) =>
+                          setEditingFront((prev) =>
+                            prev ? `${prev}\n${text}` : text,
+                          )
+                        }
+                      />
                       <MarkdownEditor
                         value={editingBack}
                         onChange={setEditingBack}
                         placeholder="Back"
                         minRows={4}
+                      />
+                      <AIAppendControls
+                        domain="flashcard back"
+                        content={editingBack}
+                        onAppend={(text) =>
+                          setEditingBack((prev) =>
+                            prev ? `${prev}\n${text}` : text,
+                          )
+                        }
                       />
                       <label className="inline-flex">
                         <input
@@ -553,6 +791,13 @@ export default function FlashcardSetPage() {
             onChange={setSetDescription}
             placeholder="Set description"
             minRows={10}
+          />
+          <AIAppendControls
+            domain="flashcard set description"
+            content={setDescription}
+            onAppend={(text) =>
+              setSetDescription((prev) => (prev ? `${prev}\n\n${text}` : text))
+            }
           />
           <div className="rounded-md border p-3 text-sm space-y-1">
             <div>

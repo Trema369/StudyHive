@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { MarkdownEditor } from "@/components/web/markdown-editor";
 import { MarkdownContent } from "@/components/web/markdown-content";
 import { AttachmentPreview } from "@/components/web/attachment-preview";
+import { AIAppendControls } from "@/components/web/ai-append-controls";
 import { Attachment, uploadFile } from "@/lib/uploads";
 import { clearNoteDraft, readNoteDraft } from "@/lib/ai-handoff";
 import {
@@ -122,6 +123,18 @@ export default function NotesPage() {
 
   const selectedGroup = groups.find((x) => x.id === selectedGroupId) ?? null;
   const selectedNote = notes.find((x) => x.id === selectedNoteId) ?? null;
+  const groupContextContent = useMemo(() => {
+    if (!selectedGroupId) return noteContent;
+    const siblingNotes = notes.filter((n) => n.id !== selectedNoteId);
+    const siblingText = siblingNotes
+      .map((n) =>
+        `# ${n.title ?? "Untitled note"}\n${(n.content ?? "").trim()}`.trim(),
+      )
+      .filter((x) => x.length > 0)
+      .join("\n\n---\n\n");
+    if (!siblingText) return noteContent;
+    return `Current note:\n${noteContent}\n\nOther notes in group:\n${siblingText}`;
+  }, [selectedGroupId, selectedNoteId, notes, noteContent]);
 
   const filteredTodos = useMemo(
     () =>
@@ -724,13 +737,24 @@ export default function NotesPage() {
                   </div>
                   <div className="flex-1 min-h-[60vh]">
                     {noteMode === "edit" ? (
-                      <MarkdownEditor
-                        value={noteContent}
-                        onChange={setNoteContent}
-                        placeholder="Write your note in markdown..."
-                        minRows={28}
-                        className="h-full"
-                      />
+                      <div className="space-y-2 h-full">
+                        <AIAppendControls
+                          domain="notes"
+                          content={groupContextContent}
+                          onAppend={(text) =>
+                            setNoteContent((prev) =>
+                              prev ? `${prev}\n\n${text}` : text,
+                            )
+                          }
+                        />
+                        <MarkdownEditor
+                          value={noteContent}
+                          onChange={setNoteContent}
+                          placeholder="Write your note in markdown..."
+                          minRows={28}
+                          className="h-full"
+                        />
+                      </div>
                     ) : (
                       <div className="h-full min-h-[60vh] rounded-md border p-4 overflow-y-auto">
                         <MarkdownContent

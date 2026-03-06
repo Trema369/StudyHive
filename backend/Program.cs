@@ -243,9 +243,42 @@ async Task DefineSchemaAsync(ISurrealDbClient surrealDbClient)
         DEFINE FIELD IF NOT EXISTS name ON TABLE quiz TYPE string;
         DEFINE FIELD IF NOT EXISTS cost ON TABLE quiz TYPE float DEFAULT 0.0;
         DEFINE FIELD IF NOT EXISTS published ON TABLE quiz TYPE bool DEFAULT false;
+        DEFINE FIELD timerMinutes ON TABLE quiz TYPE option<int>;
         DEFINE FIELD IF NOT EXISTS description ON TABLE quiz TYPE string;
         DEFINE FIELD IF NOT EXISTS userId ON TABLE quiz TYPE string;
         DEFINE FIELD IF NOT EXISTS code ON TABLE quiz TYPE string;
+        UPDATE quiz UNSET timerMinutes WHERE timerMinutes = NULL OR timerMinutes = NONE;
+
+        DEFINE TABLE IF NOT EXISTS question SCHEMALESS;
+        DEFINE FIELD IF NOT EXISTS quizId ON TABLE question TYPE string;
+        DEFINE FIELD IF NOT EXISTS text ON TABLE question TYPE string;
+        DEFINE FIELD IF NOT EXISTS type ON TABLE question TYPE string DEFAULT 'multiple_choice';
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE question TYPE array<object>;
+        DEFINE FIELD IF NOT EXISTS answers ON TABLE question TYPE array<object>;
+
+        DEFINE TABLE IF NOT EXISTS quizsubmission SCHEMALESS;
+        DEFINE FIELD IF NOT EXISTS quizId ON TABLE quizsubmission TYPE string;
+        DEFINE FIELD IF NOT EXISTS userId ON TABLE quizsubmission TYPE string;
+        DEFINE FIELD IF NOT EXISTS answers ON TABLE quizsubmission TYPE array<int>;
+        DEFINE FIELD multiAnswers ON TABLE quizsubmission TYPE option<array<array<int>>>;
+        DEFINE FIELD textAnswers ON TABLE quizsubmission TYPE option<array<string>>;
+        DEFINE FIELD IF NOT EXISTS date ON TABLE quizsubmission TYPE datetime DEFAULT time::now();
+        DEFINE FIELD IF NOT EXISTS score ON TABLE quizsubmission TYPE float DEFAULT 0.0;
+        UPDATE quizsubmission UNSET multiAnswers WHERE multiAnswers = NULL OR multiAnswers = NONE;
+        UPDATE quizsubmission UNSET textAnswers WHERE textAnswers = NULL OR textAnswers = NONE;
+
+        DEFINE TABLE IF NOT EXISTS question_bank SCHEMALESS;
+        DEFINE FIELD IF NOT EXISTS userId ON TABLE question_bank TYPE string;
+        DEFINE FIELD IF NOT EXISTS name ON TABLE question_bank TYPE string;
+        DEFINE FIELD IF NOT EXISTS description ON TABLE question_bank TYPE string;
+
+        DEFINE TABLE IF NOT EXISTS question_bank_item SCHEMALESS;
+        DEFINE FIELD IF NOT EXISTS bankId ON TABLE question_bank_item TYPE string;
+        DEFINE FIELD IF NOT EXISTS userId ON TABLE question_bank_item TYPE string;
+        DEFINE FIELD IF NOT EXISTS text ON TABLE question_bank_item TYPE string;
+        DEFINE FIELD IF NOT EXISTS type ON TABLE question_bank_item TYPE string DEFAULT 'multiple_choice';
+        DEFINE FIELD IF NOT EXISTS attachments ON TABLE question_bank_item TYPE array<object>;
+        DEFINE FIELD IF NOT EXISTS answers ON TABLE question_bank_item TYPE array<object>;
 
         DEFINE ANALYZER quiz_analyzer TOKENIZERS class, blank FILTERS lowercase, ascii;
         DEFINE INDEX name_index ON TABLE quiz COLUMNS name SEARCH ANALYZER quiz_analyzer BM25;

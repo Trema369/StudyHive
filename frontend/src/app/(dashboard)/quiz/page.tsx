@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,55 +15,46 @@ import { getAuthUser } from "@/lib/auth";
 import { MarkdownContent } from "@/components/web/markdown-content";
 import { MarkdownEditor } from "@/components/web/markdown-editor";
 import { AIAppendControls } from "@/components/web/ai-append-controls";
-import {
-  clearFlashcardDraft,
-  readFlashcardDraft,
-  type FlashcardDraft,
-} from "@/lib/ai-handoff";
-
-export type FlashcardSet = {
-  id?: string;
-  userId?: string;
-  name?: string;
-  published?: boolean;
-  description?: string;
-  code?: string;
-};
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5082";
 
-export default function FlashcardsPage() {
-  const router = useRouter();
+type QuizSet = {
+  id?: string;
+  userId?: string;
+  name?: string;
+  published?: boolean;
+  timerMinutes?: number | null;
+  description?: string;
+  code?: string;
+};
+
+export default function QuizPage() {
   const [userId, setUserId] = useState("");
-  const [sets, setSets] = useState<FlashcardSet[]>([]);
-  const [discoverSets, setDiscoverSets] = useState<FlashcardSet[]>([]);
+  const [items, setItems] = useState<QuizSet[]>([]);
+  const [discoverItems, setDiscoverItems] = useState<QuizSet[]>([]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "join">("create");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [published, setPublished] = useState(false);
+  const [timerMinutes, setTimerMinutes] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [search, setSearch] = useState("");
-  const [incomingDraft, setIncomingDraft] = useState<FlashcardDraft | null>(
-    null,
-  );
 
   const syncAuth = () => setUserId(getAuthUser()?.id ?? "");
 
   const loadData = async () => {
     if (!userId) return;
     const [mineRes, discoverRes] = await Promise.all([
-      fetch(`${API_BASE}/api/flashcards/user/${userId}`),
-      fetch(
-        `${API_BASE}/api/flashcards/search?query=${encodeURIComponent(search)}`,
-      ),
+      fetch(`${API_BASE}/api/quiz/user/${userId}`),
+      fetch(`${API_BASE}/api/quiz/search?query=${encodeURIComponent(search)}`),
     ]);
-    if (mineRes.ok) setSets((await mineRes.json()) as FlashcardSet[]);
+    if (mineRes.ok) setItems((await mineRes.json()) as QuizSet[]);
     if (discoverRes.ok) {
-      const rows = (await discoverRes.json()) as FlashcardSet[];
-      setDiscoverSets(rows.filter((x) => x.published || x.userId === userId));
+      const rows = (await discoverRes.json()) as QuizSet[];
+      setDiscoverItems(rows.filter((x) => x.published || x.userId === userId));
     }
   };
 
@@ -79,22 +69,12 @@ export default function FlashcardsPage() {
   }, []);
 
   useEffect(() => {
-    const draft = readFlashcardDraft();
-    if (!draft) return;
-    setIncomingDraft(draft);
-    setDialogMode("create");
-    setDialogOpen(true);
-    setName(draft.name || "AI Flashcards");
-    setDescription(draft.description || "");
-  }, []);
-
-  useEffect(() => {
     void loadData();
   }, [userId, search]);
 
-  const createSet = async () => {
+  const createQuiz = async () => {
     if (!userId || !name.trim() || !description.trim()) return;
-    const createdRes = await fetch(`${API_BASE}/api/flashcards`, {
+    const res = await fetch(`${API_BASE}/api/quiz`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -102,32 +82,15 @@ export default function FlashcardsPage() {
         name: name.trim(),
         description: description.trim(),
         published,
+        timerMinutes: timerMinutes.trim()
+          ? Number.parseInt(timerMinutes, 10)
+          : null,
       }),
     });
-    const created = (await createdRes.json()) as FlashcardSet;
-
-    if (incomingDraft?.cards?.length && created.id) {
-      for (const card of incomingDraft.cards) {
-        if (!card.front?.trim() || !card.back?.trim()) continue;
-        await fetch(`${API_BASE}/api/flashcards/${created.id}/cards`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            front: card.front.trim(),
-            back: card.back.trim(),
-          }),
-        });
-      }
-      clearFlashcardDraft();
-      setIncomingDraft(null);
-      setDialogOpen(false);
-      router.push(`/flashcards/${created.id}`);
-      return;
-    }
-
     setName("");
     setDescription("");
     setPublished(false);
+    setTimerMinutes("");
     setDialogOpen(false);
     await loadData();
   };
@@ -135,16 +98,16 @@ export default function FlashcardsPage() {
   const joinByCode = async () => {
     if (!joinCode.trim()) return;
     const res = await fetch(
-      `${API_BASE}/api/flashcards/code/${encodeURIComponent(joinCode.trim())}`,
+      `${API_BASE}/api/quiz/code/${encodeURIComponent(joinCode.trim())}`,
     );
-    const set = (await res.json()) as FlashcardSet;
-    window.location.href = `/flashcards/${set.id}`;
+    const set = (await res.json()) as QuizSet;
+    window.location.href = `/quiz/${set.id}`;
   };
 
   return (
     <main className="mx-auto max-w-6xl min-h-screen overflow-y-auto p-6 space-y-6 py-30">
       <section className="rounded-lg border p-4 space-y-3">
-        <h1 className="text-3xl font-semibold">Flashcards</h1>
+        <h1 className="text-3xl font-semibold">Quizzes</h1>
         <div className="flex flex-wrap gap-2">
           <Button
             disabled={!userId}
@@ -167,7 +130,7 @@ export default function FlashcardsPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search flashcard sets"
+            placeholder="Search quizzes"
             className="max-w-sm"
           />
         </div>
@@ -175,12 +138,12 @@ export default function FlashcardsPage() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-lg border p-4 space-y-3">
-          <h2 className="font-semibold">Your sets</h2>
+          <h2 className="font-semibold">Your quizzes</h2>
           <div className="space-y-2">
-            {sets.map((set) => (
+            {items.map((set) => (
               <Link
                 key={set.id}
-                href={`/flashcards/${set.id}`}
+                href={`/quiz/${set.id}`}
                 className="block rounded-md border p-3 hover:bg-muted"
               >
                 <div className="font-medium">{set.name}</div>
@@ -190,11 +153,14 @@ export default function FlashcardsPage() {
                 />
                 <div className="text-xs text-muted-foreground">
                   {set.published ? "Public" : "Private"} • Code: {set.code}
+                  {set.timerMinutes && set.timerMinutes > 0
+                    ? ` • ${set.timerMinutes} min`
+                    : ""}
                 </div>
               </Link>
             ))}
-            {sets.length === 0 && (
-              <p className="text-sm text-muted-foreground">No sets yet.</p>
+            {items.length === 0 && (
+              <p className="text-sm text-muted-foreground">No quizzes yet.</p>
             )}
           </div>
         </div>
@@ -202,10 +168,10 @@ export default function FlashcardsPage() {
         <div className="rounded-lg border p-4 space-y-3">
           <h2 className="font-semibold">Discover</h2>
           <div className="space-y-2">
-            {discoverSets.map((set) => (
+            {discoverItems.map((set) => (
               <Link
                 key={set.id}
-                href={`/flashcards/${set.id}`}
+                href={`/quiz/${set.id}`}
                 className="block rounded-md border p-3 hover:bg-muted"
               >
                 <div className="font-medium">{set.name}</div>
@@ -215,12 +181,15 @@ export default function FlashcardsPage() {
                 />
                 <div className="text-xs text-muted-foreground">
                   {set.published ? "Public" : "Private"} • Code: {set.code}
+                  {set.timerMinutes && set.timerMinutes > 0
+                    ? ` • ${set.timerMinutes} min`
+                    : ""}
                 </div>
               </Link>
             ))}
-            {discoverSets.length === 0 && (
+            {discoverItems.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                No discoverable sets.
+                No discoverable quizzes.
               </p>
             )}
           </div>
@@ -232,7 +201,7 @@ export default function FlashcardsPage() {
         <DialogContent className="sm:max-w-xl w-[95vw]">
           <DialogHeader>
             <DialogTitle>
-              {dialogMode === "create" ? "Create set" : "Open by code"}
+              {dialogMode === "create" ? "Create" : "Add"}
             </DialogTitle>
           </DialogHeader>
           {dialogMode === "create" ? (
@@ -249,7 +218,7 @@ export default function FlashcardsPage() {
                 minRows={8}
               />
               <AIAppendControls
-                domain="flashcard set description"
+                domain="quiz description"
                 content={description}
                 onAppend={(text) =>
                   setDescription((prev) => (prev ? `${prev}\n\n${text}` : text))
@@ -263,16 +232,23 @@ export default function FlashcardsPage() {
                 />
                 Public
               </label>
-              <Button onClick={() => void createSet()}>Create</Button>
+              <Input
+                type="number"
+                min={1}
+                value={timerMinutes}
+                onChange={(e) => setTimerMinutes(e.target.value)}
+                placeholder="Timer (mins)"
+              />
+              <Button onClick={() => void createQuiz()}>Create</Button>
             </div>
           ) : (
             <div className="space-y-2">
               <Input
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value)}
-                placeholder="Enter Share code"
+                placeholder="Enter share code"
               />
-              <Button onClick={() => void joinByCode()}>Open set</Button>
+              <Button onClick={() => void joinByCode()}>Open quiz</Button>
             </div>
           )}
         </DialogContent>
