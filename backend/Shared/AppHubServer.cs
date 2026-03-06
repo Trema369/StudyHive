@@ -87,4 +87,5 @@ public interface IAppHubServer
     Task<string> GetChatName(Chat chat, string userId);
     Task<User?> SignIn(string username, string password);
     Task<User?> SignUp(UserInfo user);
+    Task<List<string>> GetOnlineUsers();
 }

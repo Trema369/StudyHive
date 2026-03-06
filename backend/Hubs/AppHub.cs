@@ -19,6 +19,11 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         string,
         ConcurrentDictionary<string, bool>
     > connectedChats = new();
+
+    // At the top of the class, alongside connectedChats
+    private static readonly ConcurrentDictionary<string, string> _onlineUsers = new();
+
+    // connectionId -> userId
     HttpClient httpClient = new HttpClient();
     private readonly SurrealDbClient dbClient;
     private readonly SurrealDbOptions dbOptions;
@@ -33,24 +38,42 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         this.ecocashClient = new EcocashClient("QVYPAT1icVGSxlD20aTH4ZV2SMg8bdUN");
     }
 
-    public override Task OnConnectedAsync()
+    public override async Task OnConnectedAsync()
     {
+        var userId = Context.GetHttpContext()?.Request.Query["userId"].ToString();
+        if (!string.IsNullOrEmpty(userId))
+        {
+            _onlineUsers[Context.ConnectionId] = userId;
+            await Clients.All.UserOnline(userId);
+        }
         Console.WriteLine("Connected");
-        return base.OnConnectedAsync();
+        await base.OnConnectedAsync();
     }
 
-    public override Task OnDisconnectedAsync(Exception? exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        // Existing chat cleanup
         if (connectedChats.TryRemove(Context.ConnectionId, out var parents))
         {
             var tasks = parents.Keys.Select(p =>
                 Groups.RemoveFromGroupAsync(Context.ConnectionId, p)
             );
-            return Task.WhenAll(tasks);
+            await Task.WhenAll(tasks);
         }
+
+        // New presence cleanup
+        if (_onlineUsers.TryRemove(Context.ConnectionId, out var userId))
+        {
+            await Clients.All.UserOffline(userId);
+        }
+
         Console.WriteLine("Disconnected");
-        Console.WriteLine(exception);
-        return base.OnDisconnectedAsync(exception);
+        await base.OnDisconnectedAsync(exception);
+    }
+
+    public Task<List<string>> GetOnlineUsers()
+    {
+        return Task.FromResult(_onlineUsers.Values.Distinct().ToList());
     }
 
     public async Task<User?> AddMoneyToUser(string userId, float amt)
@@ -175,7 +198,8 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         if (chat.isDirect ?? false)
         {
             chat.adminIds = chat.userIds ?? [];
-        }else
+        }
+        else
         {
             chat.adminIds ??= [];
         }

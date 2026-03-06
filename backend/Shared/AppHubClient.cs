@@ -9,4 +9,6 @@ public interface IAppHubClient
     Task ReceiveMessage(Message message);
     Task ReceiveClassThread(ClassThread thread);
     Task ReceiveClassThreadComment(ClassThreadComment comment);
+    Task UserOnline(string userId);
+    Task UserOffline(string userId);
 }
