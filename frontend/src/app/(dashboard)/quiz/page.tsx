@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,6 +16,11 @@ import { getAuthUser } from "@/lib/auth";
 import { MarkdownContent } from "@/components/web/markdown-content";
 import { MarkdownEditor } from "@/components/web/markdown-editor";
 import { AIAppendControls } from "@/components/web/ai-append-controls";
+import {
+  clearQuizDraft,
+  readQuizDraft,
+  type QuizDraft,
+} from "@/lib/ai-handoff";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5082";
@@ -30,6 +36,7 @@ type QuizSet = {
 };
 
 export default function QuizPage() {
+  const router = useRouter();
   const [userId, setUserId] = useState("");
   const [items, setItems] = useState<QuizSet[]>([]);
   const [discoverItems, setDiscoverItems] = useState<QuizSet[]>([]);
@@ -42,6 +49,7 @@ export default function QuizPage() {
   const [timerMinutes, setTimerMinutes] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [search, setSearch] = useState("");
+  const [incomingDraft, setIncomingDraft] = useState<QuizDraft | null>(null);
 
   const syncAuth = () => setUserId(getAuthUser()?.id ?? "");
 
@@ -69,6 +77,16 @@ export default function QuizPage() {
   }, []);
 
   useEffect(() => {
+    const draft = readQuizDraft();
+    if (!draft) return;
+    setIncomingDraft(draft);
+    setDialogMode("create");
+    setDialogOpen(true);
+    setName(draft.name || "AI Quiz");
+    setDescription(draft.description || "");
+  }, []);
+
+  useEffect(() => {
     void loadData();
   }, [userId, search]);
 
@@ -87,6 +105,29 @@ export default function QuizPage() {
           : null,
       }),
     });
+    const created = (await res.json()) as QuizSet;
+
+    if (incomingDraft?.questions?.length && created.id) {
+      for (const q of incomingDraft.questions) {
+        if (!q.text?.trim()) continue;
+        await fetch(`${API_BASE}/api/quiz/${created.id}/questions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: q.text.trim(),
+            type: q.type ?? "multiple_choice",
+            attachments: q.attachments ?? [],
+            answers: q.answers ?? [],
+          }),
+        });
+      }
+      clearQuizDraft();
+      setIncomingDraft(null);
+      setDialogOpen(false);
+      router.push(`/quiz/${created.id}`);
+      return;
+    }
+
     setName("");
     setDescription("");
     setPublished(false);

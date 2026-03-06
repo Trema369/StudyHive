@@ -148,6 +148,15 @@ public class QuizController : ControllerBase
         return Ok(sub);
     }
 
+    [HttpPost("generate")]
+    public async Task<ActionResult<List<Question>>> GenerateQuizQuestions(
+        [FromBody] AIQuizRequest req
+    )
+    {
+        var questions = await _appHub.GetAIQuizQuestions(req.notes, req.model ?? "ministral");
+        return Ok(questions);
+    }
+
     [HttpGet("{id}/submissions")]
     public async Task<ActionResult<List<QuizSubmission>>> GetSubmissions(string id)
     {

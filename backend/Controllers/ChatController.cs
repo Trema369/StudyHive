@@ -157,9 +157,9 @@ namespace backend.Controllers
         [HttpPost("message")]
         public async Task<ActionResult<Message>> SendMessage([FromBody] Message message)
         {
-            var chat = await _appHub.GetChat(message.parentId);
+            var chat = await _appHub.GetChatOrNull(message.parentId);
 
-            if (chat.adminOnly ?? true && !IsAdmin(chat, message.userId))
+            if (chat is not null && (chat.adminOnly ?? false) && !IsAdmin(chat, message.userId))
                 return Forbid();
 
             message.date ??= DateTime.Now;

@@ -6,6 +6,7 @@ import { FlashCardPage } from '@/components/web/FlashCardPage';
 import { FeatureCard } from '@/components/web/FeatureCard';
 import { JSX, useState } from 'react';
 import { SummarizerCardPage } from '@/components/web/SummarizerCardPage';
+import { QuizCardPage } from '@/components/web/quiz-card-page';
 import {
     Card,
     CardContent,
@@ -56,7 +57,7 @@ export default function HiveAi() {
             description: 'Turn your notes into a quiz to test your knowledge.',
             icon: <HelpCircle className="h-5 w-5" />,
             accent: '#8b5cf6',
-            component: null,
+            component: <QuizCardPage />,
         },
     ];
 

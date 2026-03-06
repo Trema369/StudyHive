@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
+import { getAuthUser } from "@/lib/auth";
 
 import { Separator } from "@/components/ui/separator";
 import {
@@ -41,6 +42,31 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [accountName, setAccountName] = useState("Guest");
+
+  useEffect(() => {
+    const syncAuth = () => {
+      const user = getAuthUser();
+      setAccountName(user?.username?.trim() || user?.email?.trim() || "Guest");
+    };
+    syncAuth();
+    window.addEventListener("auth-changed", syncAuth);
+    window.addEventListener("storage", syncAuth);
+    return () => {
+      window.removeEventListener("auth-changed", syncAuth);
+      window.removeEventListener("storage", syncAuth);
+    };
+  }, []);
+
+  const initials = useMemo(() => {
+    const parts = accountName
+      .split(/\s+/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (parts.length === 0) return "GU";
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }, [accountName]);
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -130,14 +156,16 @@ export function Sidebar() {
             )}
           >
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-teal-500 to-sky-500 text-white font-bold text-xs">
-              JD
+              {initials}
             </div>
             {!collapsed && (
               <div className="overflow-hidden">
                 <p className="truncate text-sm font-medium leading-tight">
-                  T Mazenge
+                  {accountName}
                 </p>
-                <p className="truncate text-xs text-muted-foreground">Leader</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  Signed in
+                </p>
               </div>
             )}
           </div>

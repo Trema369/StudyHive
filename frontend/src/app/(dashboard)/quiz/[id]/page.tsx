@@ -11,6 +11,8 @@ import { AttachmentPreview } from "@/components/web/attachment-preview";
 import { Attachment, uploadFile } from "@/lib/uploads";
 import { AIAppendControls } from "@/components/web/ai-append-controls";
 import { ArrowBigLeft, ArrowBigRight, SkipForward } from "lucide-react";
+import { generateAIQuizQuestions, type QuizQuestion } from "@/lib/quiz";
+import { getAIModels, type AIAppendMode } from "@/lib/ai-append";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5082";
@@ -128,6 +130,11 @@ export default function QuizDetailPage() {
     null,
   );
   const [timerStarted, setTimerStarted] = useState(false);
+  const [bulkAIMode, setBulkAIMode] = useState<AIAppendMode>("extrapolate");
+  const [bulkAIPrompt, setBulkAIPrompt] = useState("");
+  const [bulkAIModels, setBulkAIModels] = useState<string[]>([]);
+  const [bulkAIModel, setBulkAIModel] = useState("ministral");
+  const [bulkAILoading, setBulkAILoading] = useState(false);
 
   const canEdit = !!userId && quiz?.userId === userId;
   const activeQuestions = useMemo(
@@ -155,6 +162,8 @@ export default function QuizDetailPage() {
     if (mine.length === 0) return null;
     return mine[mine.length - 1];
   }, [submissions, userId]);
+
+  const submissionForReview = latestSubmission ?? myLatestSubmission;
 
   const loadAll = async () => {
     if (!quizId) return;
@@ -230,6 +239,15 @@ export default function QuizDetailPage() {
     }, 1000);
     return () => clearTimeout(t);
   }, [timerStarted, activeTimerSeconds]);
+
+  useEffect(() => {
+    void (async () => {
+      const rows = await getAIModels();
+      if (rows.length === 0) return;
+      setBulkAIModels(rows);
+      if (!rows.includes(bulkAIModel)) setBulkAIModel(rows[0]);
+    })();
+  }, []);
 
   const startCreateQuestion = () => {
     setEditingQuestionId("new");
@@ -380,6 +398,10 @@ export default function QuizDetailPage() {
         multiAnswers,
         textAnswers,
       });
+      setSelectedAnswerIndexes({});
+      setTypedAnswers({});
+      setSkippedQuestions({});
+      setCurrentQuestionIndex(0);
       return;
     }
     if (!quizId) return;
@@ -391,6 +413,10 @@ export default function QuizDetailPage() {
 
     const sub = (await res.json()) as QuizSubmission;
     setLatestSubmission(sub);
+    setSelectedAnswerIndexes({});
+    setTypedAnswers({});
+    setSkippedQuestions({});
+    setCurrentQuestionIndex(0);
 
     await loadAll();
   };
@@ -610,6 +636,97 @@ export default function QuizDetailPage() {
         }),
       });
     }
+  };
+
+  const createAIBulkQuestions = async () => {
+    if (!canEdit || !quizId) return;
+    setBulkAILoading(true);
+    try {
+      const existingQuestionData =
+        questions.length > 0
+          ? questions
+              .map((q, i) => {
+                const options =
+                  q.type === "multiple_choice"
+                    ? (q.answers ?? [])
+                        .map(
+                          (a, ai) =>
+                            `${String.fromCharCode(65 + ai)}. ${a.text ?? ""}${a.isCorrect ? " (correct)" : ""}`,
+                        )
+                        .join("\n")
+                    : `Expected: ${(q.answers ?? [])[0]?.text ?? ""}`;
+                return `Question ${i + 1}\nType: ${q.type ?? "multiple_choice"}\nText: ${q.text ?? ""}\n${options}`;
+              })
+              .join("\n\n")
+          : "No existing questions yet.";
+
+      const notes =
+        bulkAIMode === "prompt"
+          ? `Generate questions from this prompt only:\n${bulkAIPrompt.trim()}`
+          : bulkAIMode === "prompt_assisted"
+            ? `Prompt:\n${bulkAIPrompt.trim()}\n\nExisting quiz context:\n${existingQuestionData}`
+            : `Generate additional questions from this quiz context:\n${existingQuestionData}`;
+
+      const generated = await generateAIQuizQuestions({
+        notes,
+        model: bulkAIModel,
+      });
+
+      const valid = (generated ?? []).filter(
+        (q: QuizQuestion) => !!q.text?.trim(),
+      );
+
+      for (const q of valid) {
+        await fetch(`${API_BASE}/api/quiz/${quizId}/questions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: q.text?.trim() ?? "",
+            type: q.type ?? "multiple_choice",
+            attachments: q.attachments ?? [],
+            answers: q.answers ?? [],
+          }),
+        });
+      }
+      await loadAll();
+    } finally {
+      setBulkAILoading(false);
+    }
+  };
+
+  const getQuestionReview = (q: Question, idx: number, sub: QuizSubmission) => {
+    const type = q.type ?? "multiple_choice";
+    if (type === "multiple_choice") {
+      const selected = new Set<number>(sub.multiAnswers?.[idx] ?? []);
+      const answers = q.answers ?? [];
+      const correctIndexes = new Set<number>(
+        answers
+          .map((a, i) => ({ a, i }))
+          .filter(({ a }) => a.isCorrect)
+          .map(({ i }) => i),
+      );
+      const isCorrect =
+        selected.size === correctIndexes.size &&
+        Array.from(selected).every((x) => correctIndexes.has(x));
+      return {
+        type,
+        isCorrect,
+        selected,
+        correctIndexes,
+      };
+    }
+    const expected = (q.answers ?? [])[0]?.text?.trim() ?? "";
+    const given = (sub.textAnswers?.[idx] ?? "").trim();
+    const isCorrect =
+      expected.length > 0 &&
+      given.length > 0 &&
+      expected.toLowerCase() === given.toLowerCase();
+    return {
+      type,
+      isCorrect,
+      expected,
+      given,
+    };
   };
 
   return (
@@ -872,6 +989,93 @@ export default function QuizDetailPage() {
               No questions in this quiz yet.
             </p>
           )}
+          {submissionForReview && activeQuestions.length > 0 && (
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-base font-semibold">Completed</h3>
+                <p className="text-sm text-muted-foreground">
+                  Score:{" "}
+                  <span className="font-medium">
+                    {submissionForReview.score ?? 0} / {activeQuestions.length}
+                  </span>
+                </p>
+              </div>
+              <div className="space-y-3">
+                {activeQuestions.map((q, idx) => {
+                  const review = getQuestionReview(q, idx, submissionForReview);
+                  return (
+                    <div
+                      key={q.id ?? idx}
+                      className="rounded border p-3 space-y-2"
+                    >
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Question {idx + 1}
+                      </p>
+                      <MarkdownContent
+                        className="prose prose-sm max-w-none dark:prose-invert"
+                        content={q.text ?? ""}
+                      />
+                      {review.type === "multiple_choice" ? (
+                        <div className="space-y-1 text-sm">
+                          <p>
+                            Your answer:{" "}
+                            {Array.from(review.selected).length > 0
+                              ? Array.from(review.selected)
+                                  .map(
+                                    (i) =>
+                                      (q.answers ?? [])[i]?.text ??
+                                      `Option ${i + 1}`,
+                                  )
+                                  .join(", ")
+                              : "No answer"}
+                          </p>
+                          <p
+                            className={
+                              review.isCorrect
+                                ? "text-green-600 dark:text-green-400"
+                                : "text-red-600 dark:text-red-400"
+                            }
+                          >
+                            {review.isCorrect ? "Correct" : "Wrong"}
+                          </p>
+                          {!review.isCorrect && (
+                            <p className="text-muted-foreground">
+                              Correct answer:{" "}
+                              {Array.from(review.correctIndexes)
+                                .map(
+                                  (i) =>
+                                    (q.answers ?? [])[i]?.text ??
+                                    `Option ${i + 1}`,
+                                )
+                                .join(", ")}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-1 text-sm">
+                          <p>Your answer: {review.given || "No answer"}</p>
+                          <p
+                            className={
+                              review.isCorrect
+                                ? "text-green-600 dark:text-green-400"
+                                : "text-red-600 dark:text-red-400"
+                            }
+                          >
+                            {review.isCorrect ? "Correct" : "Wrong"}
+                          </p>
+                          {!review.isCorrect && (
+                            <p className="text-muted-foreground">
+                              Correct answer: {review.expected || "—"}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {bankTargetQuestionIndex !== null && (
             <div className="rounded-md border p-3 space-y-2">
               <p className="text-sm font-medium">
@@ -937,6 +1141,53 @@ export default function QuizDetailPage() {
 
       {tab === "questions" && (
         <section className="rounded-lg border p-4 space-y-4">
+          {canEdit && (
+            <div className="rounded-md border p-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={bulkAIModel}
+                  onChange={(e) => setBulkAIModel(e.target.value)}
+                  className="rounded-md border bg-background p-2 text-sm"
+                >
+                  {bulkAIModels.length === 0 && (
+                    <option value="ministral">ministral</option>
+                  )}
+                  {bulkAIModels.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={bulkAIMode}
+                  onChange={(e) => setBulkAIMode(e.target.value as AIAppendMode)}
+                  className="rounded-md border bg-background p-2 text-sm"
+                >
+                  <option value="extrapolate">Extrapolate</option>
+                  <option value="prompt_assisted">Prompt assisted</option>
+                  <option value="prompt">Prompt only</option>
+                </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void createAIBulkQuestions()}
+                  disabled={bulkAILoading}
+                >
+                  {bulkAILoading ? "Generating..." : "AI Add Multiple Questions"}
+                </Button>
+              </div>
+              {bulkAIMode !== "extrapolate" && (
+                <Input
+                  value={bulkAIPrompt}
+                  onChange={(e) => setBulkAIPrompt(e.target.value)}
+                  placeholder="Prompt"
+                />
+              )}
+              {!!bulkAIStatus && (
+                <p className="text-xs text-muted-foreground">{bulkAIStatus}</p>
+              )}
+            </div>
+          )}
           {canEdit && (
             <div className="flex justify-end">
               <Button

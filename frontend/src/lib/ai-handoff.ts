@@ -2,6 +2,7 @@ import type { FlashcardCard } from "@/lib/flashcards";
 
 const FLASHCARD_DRAFT_KEY = "studyhive:ai:flashcard-draft";
 const NOTE_DRAFT_KEY = "studyhive:ai:note-draft";
+const QUIZ_DRAFT_KEY = "studyhive:ai:quiz-draft";
 
 export type FlashcardDraft = {
   name: string;
@@ -14,6 +15,38 @@ export type NoteDraft = {
   groupDescription: string;
   noteTitle: string;
   noteContent: string;
+};
+
+export type QuizDraft = {
+  name: string;
+  description: string;
+  questions: Array<{
+    text?: string;
+    type?: "multiple_choice" | "fill_gap" | "short_answer";
+    attachments?: Array<{
+      name?: string;
+      path?: string;
+      type?: string;
+      size?: number;
+      url?: string;
+      mimeType?: string;
+      contentType?: string;
+    }>;
+    answers?: Array<{
+      text?: string;
+      isCorrect?: boolean;
+      weight?: number;
+      attachments?: Array<{
+        name?: string;
+        path?: string;
+        type?: string;
+        size?: number;
+        url?: string;
+        mimeType?: string;
+        contentType?: string;
+      }>;
+    }>;
+  }>;
 };
 
 function safeSet<T>(key: string, value: T) {
@@ -59,4 +92,16 @@ export function readNoteDraft() {
 
 export function clearNoteDraft() {
   safeRemove(NOTE_DRAFT_KEY);
+}
+
+export function saveQuizDraft(draft: QuizDraft) {
+  safeSet(QUIZ_DRAFT_KEY, draft);
+}
+
+export function readQuizDraft() {
+  return safeGet<QuizDraft>(QUIZ_DRAFT_KEY);
+}
+
+export function clearQuizDraft() {
+  safeRemove(QUIZ_DRAFT_KEY);
 }

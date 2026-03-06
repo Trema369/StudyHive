@@ -296,7 +296,13 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
     public async Task<Chat> GetChat(string id)
     {
         var res = await dbClient.Select<DbChat>(("chat", id));
-        return res!.ToBase();
+        return res.ToBase();
+    }
+
+    public async Task<Chat?> GetChatOrNull(string id)
+    {
+        var res = await dbClient.Select<DbChat>(("chat", id));
+        return res?.ToBase();
     }
 
     public async Task<Chat> AddUserToChat(string chatId, string userId)
@@ -406,6 +412,153 @@ public class AppHub : Hub<IAppHubClient>, IAppHubServer
         }
 
         return cards;
+    }
+
+    public async Task<List<Question>> GetAIQuizQuestions(string notes, string model = "ministral")
+    {
+        var aiResponse = await GetAIResponse(
+            string.IsNullOrWhiteSpace(model) ? "ministral" : model,
+            new List<Message>
+            {
+                new Message
+                {
+                    userId = "User",
+                    date = DateTime.Now,
+                    text =
+                        "Create up to 10 quiz questions from these notes. "
+                        + "Return strict JSON only in this shape: "
+                        + "[{\"text\":\"...\",\"type\":\"multiple_choice|fill_gap|short_answer\",\"answers\":[{\"text\":\"...\",\"isCorrect\":true|false,\"weight\":1}]}]. "
+                        + "For multiple_choice include 3-6 options and at least one correct option. "
+                        + "For fill_gap/short_answer include one correct answer in answers[0].\n\nNotes:\n"
+                        + notes,
+                },
+            }
+        );
+
+        if (string.IsNullOrWhiteSpace(aiResponse?.text))
+            return [];
+
+        var raw = aiResponse.text.Trim();
+        var fenced = Regex.Match(raw, "```(?:json)?\\s*([\\s\\S]*?)```", RegexOptions.IgnoreCase);
+        var payload = fenced.Success ? fenced.Groups[1].Value.Trim() : raw;
+
+        List<Question>? parsed = null;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<List<Question>>(
+                payload,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+            );
+        }
+        catch { }
+
+        if (parsed is null || parsed.Count == 0)
+        {
+            parsed = [];
+            var chunks = Regex.Split(raw, @"\n\s*\n");
+            foreach (var chunk in chunks)
+            {
+                var lines = chunk
+                    .Split('\n')
+                    .Select(x => x.Trim())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .ToList();
+                if (lines.Count < 2)
+                    continue;
+                var textLine = lines.FirstOrDefault(x =>
+                    x.StartsWith("Question:", StringComparison.OrdinalIgnoreCase)
+                );
+                if (textLine is null)
+                    continue;
+                var qText = textLine.Replace("Question:", "", StringComparison.OrdinalIgnoreCase).Trim();
+                var options = lines
+                    .Where(x => Regex.IsMatch(x, @"^([A-Da-d][\)\.\:])|^-"))
+                    .ToList();
+                var correct = lines.FirstOrDefault(x =>
+                    x.StartsWith("Correct:", StringComparison.OrdinalIgnoreCase)
+                );
+                if (string.IsNullOrWhiteSpace(qText))
+                    continue;
+                if (options.Count >= 2)
+                {
+                    var answers = options
+                        .Select(opt =>
+                        {
+                            var cleaned = Regex.Replace(opt, @"^([A-Da-d][\)\.\:])|^-", "").Trim();
+                            var isCorrect = correct is not null && correct.Contains(cleaned, StringComparison.OrdinalIgnoreCase);
+                            return new Answer
+                            {
+                                text = cleaned,
+                                isCorrect = isCorrect,
+                                weight = isCorrect ? 1f : 0f,
+                                attachments = [],
+                            };
+                        })
+                        .ToList();
+                    if (!answers.Any(x => x.isCorrect == true))
+                        answers[0].isCorrect = true;
+                    parsed.Add(
+                        new Question
+                        {
+                            text = qText,
+                            type = "multiple_choice",
+                            attachments = [],
+                            answers = answers,
+                        }
+                    );
+                    continue;
+                }
+            }
+        }
+
+        return (parsed ?? [])
+            .Where(x => !string.IsNullOrWhiteSpace(x.text))
+            .Select(x =>
+            {
+                var type = (x.type ?? "multiple_choice").Trim().ToLowerInvariant();
+                if (type != "fill_gap" && type != "short_answer" && type != "multiple_choice")
+                    type = "multiple_choice";
+
+                var answers = (x.answers ?? [])
+                    .Where(a => !string.IsNullOrWhiteSpace(a.text))
+                    .Select(a => new Answer
+                    {
+                        text = a.text!.Trim(),
+                        isCorrect = a.isCorrect ?? false,
+                        weight = a.weight ?? ((a.isCorrect ?? false) ? 1f : 0f),
+                        attachments = a.attachments ?? [],
+                    })
+                    .ToList();
+
+                if (type == "multiple_choice")
+                {
+                    if (answers.Count < 2)
+                    {
+                        answers = [
+                            new Answer { text = "Option 1", isCorrect = true, weight = 1f, attachments = [] },
+                            new Answer { text = "Option 2", isCorrect = false, weight = 0f, attachments = [] },
+                        ];
+                    }
+                    if (!answers.Any(a => a.isCorrect == true))
+                        answers[0].isCorrect = true;
+                }
+                else
+                {
+                    if (answers.Count == 0)
+                        answers = [new Answer { text = "", isCorrect = true, weight = 1f, attachments = [] }];
+                    answers = [new Answer { text = answers[0].text, isCorrect = true, weight = 1f, attachments = answers[0].attachments ?? [] }];
+                }
+
+                return new Question
+                {
+                    text = x.text!.Trim(),
+                    type = type,
+                    attachments = x.attachments ?? [],
+                    answers = answers,
+                };
+            })
+            .Take(10)
+            .ToList();
     }
 
     public async Task<string> GetAISummary(string notes)
