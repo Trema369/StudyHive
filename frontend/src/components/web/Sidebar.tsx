@@ -32,7 +32,7 @@ const navItems = [
     { label: 'Home', href: '/home', icon: Home },
     { label: 'Q&A', href: '/qna', icon: MessageCircleQuestion },
     { label: 'Colonies', href: '/classes', icon: Globe },
-    { label: 'Material', href: '/notes', icon: Layers },
+    { label: 'Material', href: '/materials', icon: Layers },
     { label: 'Resources', href: '/resources', icon: BookOpen },
     { label: 'Messages', href: '/chats', icon: MessageCircle },
     { label: 'Flashcards', href: '/flashcards', icon: Zap },
