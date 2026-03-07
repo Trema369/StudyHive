@@ -1,15 +1,15 @@
-'use client';
-import { useState } from 'react';
-import { AuthCard } from './AuthCard';
-import { AIChatPopup } from './ai-chat-popup';
-import { Button, buttonVariants } from '@/components/ui/button';
-import Link from 'next/link';
-import { ThemeToggle } from './theme-toggle';
-import Image from 'next/image';
+'use client'
+import { useState } from 'react'
+import { AuthCard } from './AuthCard'
+import { AIChatPopup } from './ai-chat-popup'
+import { Button, buttonVariants } from '@/components/ui/button'
+import Link from 'next/link'
+import { ThemeToggle } from './theme-toggle'
+import Image from 'next/image'
 
 export function Navbar() {
-    const [authOpen, setAuthOpen] = useState(false);
-    const [aiOpen, setAiOpen] = useState(false);
+    const [authOpen, setAuthOpen] = useState(false)
+    const [aiOpen, setAiOpen] = useState(false)
     return (
         <nav
             className="fixed top-0 w-full px-6 py-3 
@@ -37,28 +37,14 @@ export function Navbar() {
             </div>
 
             <div className="flex-1 hidden justify-center gap-4 lg:flex xl:gap-8">
-                <Link
-                    className={buttonVariants({ variant: 'ghost' })}
-                    href="/contribute"
-                >
+                <Link className={buttonVariants({ variant: 'ghost' })} href="/contribute">
                     Contribute
                 </Link>
-                <Link
-                    className={buttonVariants({ variant: 'ghost' })}
-                    href="/coaching"
-                >
+                <Link className={buttonVariants({ variant: 'ghost' })} href="/coaching">
                     Coaching
                 </Link>
-                <Link
-                    className={buttonVariants({ variant: 'ghost' })}
-                    href="/leaderboard"
-                >
-                    Leaderboard
-                </Link>
-                <Link
-                    className={buttonVariants({ variant: 'ghost' })}
-                    href="/hive-ai"
-                >
+
+                <Link className={buttonVariants({ variant: 'ghost' })} href="/hive-ai">
                     Hive AI
                 </Link>
             </div>
@@ -75,5 +61,5 @@ export function Navbar() {
                 <ThemeToggle />
             </div>
         </nav>
-    );
+    )
 }

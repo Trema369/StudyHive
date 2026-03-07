@@ -2,17 +2,9 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { FlashCardPage } from '@/components/web/FlashCardPage'
-import { FeatureCard } from '@/components/web/FeatureCard'
+import { useRouter } from 'next/navigation'
 import { JSX, useState } from 'react'
 import { SummarizerCardPage } from '@/components/web/SummarizerCardPage'
-import {
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
-    CardDescription,
-} from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,6 +21,7 @@ import {
 } from 'lucide-react'
 
 export default function Materials() {
+    const router = useRouter()
     const [activeFeature, setActiveFeature] = useState<null | JSX.Element>(null)
 
     const features = [
@@ -39,14 +32,17 @@ export default function Materials() {
             icon: <FlipHorizontal className="h-6 w-6" />,
             accent: '#f59e0b',
             tag: 'Active Recall',
-            component: <FlashCardPage />,
+            // Navigate to the flashcards page instead of rendering inline
+            href: '/flashcards',
+            component: null,
         },
         {
             title: 'Notes',
             description: 'Review and edit your summarized notes with AI assistance.',
             icon: <FileText className="h-6 w-6" />,
             accent: '#10b981',
-            tag: 'Access your notes',
+            tag: 'Summarizer',
+            href: null,
             component: <SummarizerCardPage />,
         },
         {
@@ -55,7 +51,8 @@ export default function Materials() {
                 'Transform your notes into quizzes that test your knowledge.',
             icon: <HelpCircle className="h-6 w-6" />,
             accent: '#8b5cf6',
-            tag: 'Access your quizzes',
+            tag: 'Coming Soon',
+            href: null,
             component: null,
         },
     ]
@@ -101,9 +98,7 @@ export default function Materials() {
     return (
         <div
             className="min-h-screen flex flex-col"
-            style={{
-                fontFamily: "'DM Sans', sans-serif",
-            }}
+            style={{ fontFamily: "'DM Sans', sans-serif" }}
         >
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Fraunces:ital,wght@0,700;0,900;1,700&display=swap');
@@ -114,8 +109,9 @@ export default function Materials() {
                     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                     position: relative;
                     overflow: hidden;
+                    text-decoration: none;
+                    display: block;
                 }
-
                 .feature-card::before {
                     content: '';
                     position: absolute;
@@ -124,42 +120,28 @@ export default function Materials() {
                     transition: opacity 0.3s ease;
                     pointer-events: none;
                 }
-
                 .feature-card:hover {
                     transform: translateY(-4px);
                     border-color: rgba(255,255,255,0.15);
                     box-shadow: 0 20px 60px -10px rgba(0,0,0,0.5);
+                    cursor: pointer;
                 }
-
-                .feature-card:hover::before {
-                    opacity: 1;
-                }
-
+                .feature-card:hover::before { opacity: 1; }
                 .card-1:hover::before { background: radial-gradient(circle at 30% 20%, rgba(245,158,11,0.12) 0%, transparent 60%); }
                 .card-2:hover::before { background: radial-gradient(circle at 30% 20%, rgba(16,185,129,0.12) 0%, transparent 60%); }
                 .card-3:hover::before { background: radial-gradient(circle at 30% 20%, rgba(139,92,246,0.12) 0%, transparent 60%); }
-
-                .arrow-icon {
-                    transition: transform 0.2s ease;
-                }
-                .feature-card:hover .arrow-icon {
-                    transform: translateX(4px);
-                }
-
+                .arrow-icon { transition: transform 0.2s ease; }
+                .feature-card:hover .arrow-icon { transform: translateX(4px); }
                 .benefit-item {
                     border-left: 1px solid rgba(255,255,255,0.06);
                     padding-left: 1.5rem;
                 }
-
                 .footer-link {
                     color: rgba(255,255,255,0.4);
                     transition: color 0.2s ease;
                     font-size: 0.875rem;
                 }
-                .footer-link:hover {
-                    color: rgba(255,255,255,0.85);
-                }
-
+                .footer-link:hover { color: rgba(255,255,255,0.85); }
                 .tag {
                     font-size: 0.65rem;
                     letter-spacing: 0.08em;
@@ -168,10 +150,12 @@ export default function Materials() {
                     padding: 2px 8px;
                     border-radius: 999px;
                 }
-
                 .divider-line {
                     height: 1px;
                     background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+                }
+                .hero-glow {
+                    background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(251,191,36,0.15) 0%, transparent 70%);
                 }
             `}</style>
 
@@ -192,7 +176,6 @@ export default function Materials() {
                         >
                             Your study hub, <span style={{ color: '#fbbf24' }}>amplified.</span>
                         </h1>
-
                         <p
                             style={{
                                 color: 'rgba(255,255,255,0.45)',
@@ -211,87 +194,101 @@ export default function Materials() {
                 {/* Feature Cards */}
                 <section className="w-full max-w-4xl mx-auto px-6 pb-16">
                     <div className="grid gap-4 sm:grid-cols-3">
-                        {features.map((feature, i) => (
-                            <div
-                                key={feature.title}
-                                className={`feature-card card-${i + 1} rounded-2xl cursor-pointer p-6`}
-                                onClick={() =>
-                                    setActiveFeature(
-                                        feature.component ?? (
-                                            <p
-                                                style={{
-                                                    color: 'rgba(255,255,255,0.4)',
-                                                    fontSize: '0.9rem',
-                                                }}
-                                            >
-                                                Coming soon!
-                                            </p>
-                                        ),
-                                    )
-                                }
-                            >
-                                {/* Icon */}
+                        {features.map((feature, i) => {
+                            const inner = (
+                                <>
+                                    <div
+                                        className="flex h-12 w-12 items-center justify-center rounded-xl mb-4"
+                                        style={{
+                                            background: `${feature.accent}15`,
+                                            color: feature.accent,
+                                        }}
+                                    >
+                                        {feature.icon}
+                                    </div>
+                                    <span
+                                        className="tag mb-3 inline-block"
+                                        style={{
+                                            background: `${feature.accent}15`,
+                                            color: feature.accent,
+                                        }}
+                                    >
+                                        {feature.tag}
+                                    </span>
+                                    <h3
+                                        style={{
+                                            fontFamily: "'Fraunces', serif",
+                                            fontSize: '1.3rem',
+                                            fontWeight: 700,
+                                            color: '#fafaf9',
+                                            marginBottom: '0.5rem',
+                                        }}
+                                    >
+                                        {feature.title}
+                                    </h3>
+                                    <p
+                                        style={{
+                                            color: 'rgba(255,255,255,0.4)',
+                                            fontSize: '0.875rem',
+                                            lineHeight: 1.65,
+                                            marginBottom: '1.25rem',
+                                        }}
+                                    >
+                                        {feature.description}
+                                    </p>
+                                    <div
+                                        className="flex items-center gap-1"
+                                        style={{
+                                            color: feature.accent,
+                                            fontSize: '0.8rem',
+                                            fontWeight: 600,
+                                        }}
+                                    >
+                                        Open <ArrowRight className="h-3.5 w-3.5 arrow-icon" />
+                                    </div>
+                                </>
+                            )
+
+                            // FlashCards → navigate to /flashcards
+                            if (feature.href) {
+                                return (
+                                    <Link
+                                        key={feature.title}
+                                        href={feature.href}
+                                        className={`feature-card card-${i + 1} rounded-2xl p-6`}
+                                    >
+                                        {inner}
+                                    </Link>
+                                )
+                            }
+
+                            // Others → render inline
+                            return (
                                 <div
-                                    className="flex h-12 w-12 items-center justify-center rounded-xl mb-4"
-                                    style={{
-                                        background: `${feature.accent}15`,
-                                        color: feature.accent,
-                                    }}
+                                    key={feature.title}
+                                    className={`feature-card card-${i + 1} rounded-2xl p-6`}
+                                    onClick={() =>
+                                        setActiveFeature(
+                                            feature.component ?? (
+                                                <p
+                                                    style={{
+                                                        color: 'rgba(255,255,255,0.4)',
+                                                        fontSize: '0.9rem',
+                                                    }}
+                                                >
+                                                    Coming soon!
+                                                </p>
+                                            ),
+                                        )
+                                    }
                                 >
-                                    {feature.icon}
+                                    {inner}
                                 </div>
-
-                                {/* Tag */}
-                                <span
-                                    className="tag mb-3 inline-block"
-                                    style={{
-                                        background: `${feature.accent}15`,
-                                        color: feature.accent,
-                                    }}
-                                >
-                                    {feature.tag}
-                                </span>
-
-                                <h3
-                                    style={{
-                                        fontFamily: "'Fraunces', serif",
-                                        fontSize: '1.3rem',
-                                        fontWeight: 700,
-                                        color: '#fafaf9',
-                                        marginBottom: '0.5rem',
-                                    }}
-                                >
-                                    {feature.title}
-                                </h3>
-
-                                <p
-                                    style={{
-                                        color: 'rgba(255,255,255,0.4)',
-                                        fontSize: '0.875rem',
-                                        lineHeight: 1.65,
-                                        marginBottom: '1.25rem',
-                                    }}
-                                >
-                                    {feature.description}
-                                </p>
-
-                                <div
-                                    className="flex items-center gap-1"
-                                    style={{
-                                        color: feature.accent,
-                                        fontSize: '0.8rem',
-                                        fontWeight: 600,
-                                    }}
-                                >
-                                    Open
-                                    <ArrowRight className="h-3.5 w-3.5 arrow-icon" />
-                                </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                 </section>
 
-                {/* Divider */}
                 <div className="divider-line max-w-4xl mx-auto px-6 mb-16" />
 
                 {/* Benefits */}

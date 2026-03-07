@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '../ui/button'
-import { Card, CardContent } from '../ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { FileDropzone } from './Dropzone'
 import { generateAIFlashcards, FlashcardCard } from '@/lib/flashcards'
@@ -17,7 +16,12 @@ import {
     Layers,
 } from 'lucide-react'
 
-export function FlashCardPage() {
+type Props = {
+    // When provided, called after saving instead of router.push('/flashcards')
+    onSaved?: () => void
+}
+
+export function FlashCardPage({ onSaved }: Props) {
     const router = useRouter()
     const [fileTexts, setFileTexts] = useState<string[]>([])
     const [longText, setLongText] = useState('')
@@ -25,7 +29,6 @@ export function FlashCardPage() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
-    // Study mode state
     const [studying, setStudying] = useState(false)
     const [currentIndex, setCurrentIndex] = useState(0)
     const [flipped, setFlipped] = useState(false)
@@ -66,7 +69,14 @@ export function FlashCardPage() {
             description: longText.trim() || 'Generated from uploaded documents.',
             cards: flashcards,
         })
-        router.push('/flashcards')
+        // If embedded inside FlashcardsPage, call the callback so the parent
+        // can hide the generator and open the create dialog with the draft.
+        // Otherwise fall back to a full page navigation.
+        if (onSaved) {
+            onSaved()
+        } else {
+            router.push('/flashcards')
+        }
     }
 
     const startStudying = () => {
@@ -92,7 +102,7 @@ export function FlashCardPage() {
         setFlipped((f) => !f)
     }
 
-    // STUDY MODE
+    // ── STUDY MODE ────────────────────────────────────────────────────
     if (studying && flashcards.length > 0) {
         const card = flashcards[currentIndex]
         const progress = ((currentIndex + 1) / flashcards.length) * 100
@@ -108,84 +118,27 @@ export function FlashCardPage() {
                 }}
             >
                 <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Fraunces:wght@700;900&display=swap');
-
-          .study-card {
-            width: 100%;
-            max-width: 600px;
-            height: 320px;
-            perspective: 1200px;
-            cursor: pointer;
-          }
-          .study-card-inner {
-            width: 100%;
-            height: 100%;
-            position: relative;
-            transform-style: preserve-3d;
-            transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1);
-          }
-          .study-card-inner.flipped {
-            transform: rotateY(180deg);
-          }
-          .study-card-face {
-            position: absolute;
-            inset: 0;
-            backface-visibility: hidden;
-            -webkit-backface-visibility: hidden;
-            border-radius: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 2.5rem;
-            text-align: center;
-            /* Ensure GPU compositing so backface-visibility works reliably */
-            transform: translateZ(0);
-          }
-          .study-card-front {
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.1);
-            /* Front sits at Z=0 by default */
-          }
-          .study-card-back {
-            background: rgba(251,191,36,0.06);
-            border: 1px solid rgba(251,191,36,0.25);
-            /* Rotate 180deg around Y so it faces the other way */
-            transform: rotateY(180deg) translateZ(0);
-          }
-          .nav-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
-            border: 1px solid rgba(255,255,255,0.1);
-            background: rgba(255,255,255,0.04);
-            color: rgba(255,255,255,0.6);
-            cursor: pointer;
-            transition: all 0.2s;
-          }
-          .nav-btn:hover:not(:disabled) {
-            border-color: rgba(255,255,255,0.2);
-            background: rgba(255,255,255,0.08);
-            color: #fafaf9;
-          }
-          .nav-btn:disabled { opacity: 0.25; cursor: not-allowed; }
-          .pill-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 16px;
-            border-radius: 999px;
-            font-size: 0.82rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-          }
-          .fade-slide { animation: fadeSlide 0.2s ease; }
-          @keyframes fadeSlide { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        `}</style>
+                    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Fraunces:wght@700;900&display=swap');
+                    .study-card { width: 100%; max-width: 600px; height: 320px; perspective: 1200px; cursor: pointer; }
+                    .study-card-inner { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.55s cubic-bezier(0.4,0,0.2,1); }
+                    .study-card-inner.flipped { transform: rotateY(180deg); }
+                    .study-card-face {
+                        position: absolute; inset: 0;
+                        backface-visibility: hidden; -webkit-backface-visibility: hidden;
+                        border-radius: 20px; display: flex; flex-direction: column;
+                        align-items: center; justify-content: center;
+                        padding: 2.5rem; text-align: center;
+                        transform: translateZ(0);
+                    }
+                    .study-card-front { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); }
+                    .study-card-back  { background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.25); transform: rotateY(180deg) translateZ(0); }
+                    .nav-btn { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.6); cursor: pointer; transition: all 0.2s; }
+                    .nav-btn:hover:not(:disabled) { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.08); color: #fafaf9; }
+                    .nav-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+                    .pill-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 999px; font-size: 0.82rem; font-weight: 500; cursor: pointer; transition: all 0.2s; font-family: 'DM Sans', sans-serif; }
+                    .fade-slide { animation: fadeSlide 0.2s ease; }
+                    @keyframes fadeSlide { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+                `}</style>
 
                 {/* Top bar */}
                 <div
@@ -198,7 +151,6 @@ export function FlashCardPage() {
                         borderBottom: '1px solid rgba(255,255,255,0.06)',
                     }}
                 >
-                    {/* Left: back to generator */}
                     <button
                         className="pill-btn"
                         style={{
@@ -214,8 +166,6 @@ export function FlashCardPage() {
                     >
                         <ArrowLeft size={14} /> Generator
                     </button>
-
-                    {/* Center: card count */}
                     <p
                         style={{
                             fontFamily: "'Fraunces', serif",
@@ -230,8 +180,6 @@ export function FlashCardPage() {
                             / {flashcards.length}
                         </span>
                     </p>
-
-                    {/* Right: save set */}
                     <button
                         className="pill-btn"
                         style={{
@@ -272,7 +220,7 @@ export function FlashCardPage() {
                         gap: '2rem',
                     }}
                 >
-                    {/* Stack preview dots */}
+                    {/* Dots */}
                     <div style={{ display: 'flex', gap: '5px', marginBottom: '-8px' }}>
                         {flashcards.map((_, i) => (
                             <div
@@ -289,7 +237,7 @@ export function FlashCardPage() {
                         ))}
                     </div>
 
-                    {/* The card */}
+                    {/* Card */}
                     <div className="study-card" onClick={flipCard}>
                         <div className={`study-card-inner ${flipped ? 'flipped' : ''}`}>
                             <div className="study-card-face study-card-front">
@@ -356,7 +304,7 @@ export function FlashCardPage() {
                         </div>
                     </div>
 
-                    {/* Navigation */}
+                    {/* Nav */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                         <button
                             className="nav-btn"
@@ -409,7 +357,7 @@ export function FlashCardPage() {
         )
     }
 
-    // GENERATOR MODE
+    // ── GENERATOR MODE ────────────────────────────────────────────────
     return (
         <div
             style={{
@@ -419,26 +367,20 @@ export function FlashCardPage() {
             }}
         >
             <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Fraunces:wght@700;900&display=swap');
-        .fc-tab-list { background: rgba(255,255,255,0.04) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 12px !important; padding: 3px !important; }
-        .fc-tab-trigger { border-radius: 9px !important; color: rgba(255,255,255,0.4) !important; font-size: 0.85rem !important; transition: all 0.2s !important; }
-        .fc-tab-trigger[data-state="active"] { background: rgba(255,255,255,0.08) !important; color: #fafaf9 !important; }
-        .fc-textarea { width: 100%; height: 100%; resize: none; outline: none; background: transparent; color: #fafaf9; font-family: 'DM Sans', sans-serif; font-size: 0.9rem; line-height: 1.6; }
-        .fc-textarea::placeholder { color: rgba(255,255,255,0.2); }
-        .fc-btn-primary { background: #fbbf24 !important; color: #0c0a08 !important; font-weight: 700 !important; border: none !important; border-radius: 10px !important; transition: all 0.2s !important; }
-        .fc-btn-primary:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(251,191,36,0.3) !important; }
-        .fc-btn-primary:disabled { opacity: 0.4 !important; transform: none !important; }
-        .fc-btn-ghost { background: transparent !important; color: rgba(255,255,255,0.55) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 10px !important; transition: all 0.2s !important; }
-        .fc-btn-ghost:hover:not(:disabled) { border-color: rgba(255,255,255,0.2) !important; color: #fafaf9 !important; }
-        .fc-btn-ghost:disabled { opacity: 0.3 !important; }
-
-        .stack-card {
-          position: absolute;
-          width: 100%;
-          border-radius: 16px;
-          transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
-        }
-      `}</style>
+                @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Fraunces:wght@700;900&display=swap');
+                .fc-tab-list { background: rgba(255,255,255,0.04) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 12px !important; padding: 3px !important; }
+                .fc-tab-trigger { border-radius: 9px !important; color: rgba(255,255,255,0.4) !important; font-size: 0.85rem !important; transition: all 0.2s !important; }
+                .fc-tab-trigger[data-state="active"] { background: rgba(255,255,255,0.08) !important; color: #fafaf9 !important; }
+                .fc-textarea { width: 100%; height: 100%; resize: none; outline: none; background: transparent; color: #fafaf9; font-family: 'DM Sans', sans-serif; font-size: 0.9rem; line-height: 1.6; }
+                .fc-textarea::placeholder { color: rgba(255,255,255,0.2); }
+                .fc-btn-primary { background: #fbbf24 !important; color: #0c0a08 !important; font-weight: 700 !important; border: none !important; border-radius: 10px !important; transition: all 0.2s !important; }
+                .fc-btn-primary:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(251,191,36,0.3) !important; }
+                .fc-btn-primary:disabled { opacity: 0.4 !important; transform: none !important; }
+                .fc-btn-ghost { background: transparent !important; color: rgba(255,255,255,0.55) !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 10px !important; transition: all 0.2s !important; }
+                .fc-btn-ghost:hover:not(:disabled) { border-color: rgba(255,255,255,0.2) !important; color: #fafaf9 !important; }
+                .fc-btn-ghost:disabled { opacity: 0.3 !important; }
+                .stack-card { position: absolute; width: 100%; border-radius: 16px; transition: all 0.3s cubic-bezier(0.4,0,0.2,1); }
+            `}</style>
 
             <div className="mx-auto max-w-3xl px-6 pb-16 pt-14">
                 {/* Hero */}
@@ -485,7 +427,7 @@ export function FlashCardPage() {
                     </p>
                 </div>
 
-                {/* Input tabs */}
+                {/* Tabs */}
                 <Tabs defaultValue="files" className="w-full">
                     <TabsList className="fc-tab-list mb-4">
                         <TabsTrigger value="files" className="fc-tab-trigger">
@@ -599,7 +541,7 @@ export function FlashCardPage() {
                     </p>
                 )}
 
-                {/* Loading shimmer */}
+                {/* Loading */}
                 {loading && (
                     <div
                         style={{
@@ -627,7 +569,7 @@ export function FlashCardPage() {
                     </div>
                 )}
 
-                {/* Stack preview + Study button */}
+                {/* Stack preview */}
                 {flashcards.length > 0 && !loading && (
                     <div
                         style={{
@@ -638,7 +580,6 @@ export function FlashCardPage() {
                             gap: '2rem',
                         }}
                     >
-                        {/* Card stack visual */}
                         <div
                             style={{
                                 position: 'relative',
@@ -647,7 +588,6 @@ export function FlashCardPage() {
                                 height: '180px',
                             }}
                         >
-                            {/* Shadow cards */}
                             {[2, 1].map((offset) => (
                                 <div
                                     key={offset}
@@ -663,7 +603,6 @@ export function FlashCardPage() {
                                     }}
                                 />
                             ))}
-                            {/* Top card */}
                             <div
                                 className="stack-card"
                                 style={{
@@ -705,7 +644,6 @@ export function FlashCardPage() {
                             </div>
                         </div>
 
-                        {/* Count + actions */}
                         <div
                             style={{
                                 textAlign: 'center',

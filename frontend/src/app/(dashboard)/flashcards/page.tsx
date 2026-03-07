@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 'use client'
 
 import Link from 'next/link'
@@ -17,6 +16,7 @@ import { getAuthUser } from '@/lib/auth'
 import { MarkdownContent } from '@/components/web/markdown-content'
 import { MarkdownEditor } from '@/components/web/markdown-editor'
 import { AIAppendControls } from '@/components/web/ai-append-controls'
+import { FlashCardPage } from '@/components/web/FlashCardPage'
 import {
     clearFlashcardDraft,
     readFlashcardDraft,
@@ -31,6 +31,8 @@ import {
     Lock,
     Globe,
     Sparkles,
+    ArrowLeft,
+    Wand2,
 } from 'lucide-react'
 
 export type FlashcardSet = {
@@ -59,6 +61,7 @@ export default function FlashcardsPage() {
     const [incomingDraft, setIncomingDraft] = useState<FlashcardDraft | null>(
         null,
     )
+    const [showAiGenerator, setShowAiGenerator] = useState(false)
 
     const syncAuth = () => setUserId(getAuthUser()?.id ?? '')
 
@@ -77,6 +80,16 @@ export default function FlashcardsPage() {
         }
     }
 
+    const pickUpDraft = () => {
+        const draft = readFlashcardDraft()
+        if (!draft) return
+        setIncomingDraft(draft)
+        setDialogMode('create')
+        setName(draft.name || 'AI Flashcards')
+        setDescription(draft.description || '')
+        setDialogOpen(true)
+    }
+
     useEffect(() => {
         syncAuth()
         window.addEventListener('auth-changed', syncAuth)
@@ -87,19 +100,20 @@ export default function FlashcardsPage() {
         }
     }, [])
 
+    // Pick up any draft on first load (e.g. navigated from standalone FlashCardPage)
     useEffect(() => {
-        const draft = readFlashcardDraft()
-        if (!draft) return
-        setIncomingDraft(draft)
-        setDialogMode('create')
-        setDialogOpen(true)
-        setName(draft.name || 'AI Flashcards')
-        setDescription(draft.description || '')
+        pickUpDraft()
     }, [])
 
     useEffect(() => {
         void loadData()
     }, [userId, search])
+
+    // Called by the embedded FlashCardPage after saving the draft
+    const handleAiSaved = () => {
+        setShowAiGenerator(false)
+        pickUpDraft()
+    }
 
     const createSet = async () => {
         if (!userId || !name.trim() || !description.trim()) return
@@ -150,6 +164,74 @@ export default function FlashcardsPage() {
         window.location.href = `/flashcards/${set.id}`
     }
 
+    // ── AI Generator view ─────────────────────────────────────────────
+    if (showAiGenerator) {
+        return (
+            <div
+                style={{
+                    background: '#0c0a08',
+                    minHeight: '100vh',
+                    fontFamily: "'DM Sans', sans-serif",
+                }}
+            >
+                <div
+                    style={{
+                        padding: '14px 24px',
+                        borderBottom: '1px solid rgba(255,255,255,0.06)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                    }}
+                >
+                    <button
+                        onClick={() => setShowAiGenerator(false)}
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 14px',
+                            borderRadius: 999,
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            color: 'rgba(255,255,255,0.6)',
+                            fontSize: '0.82rem',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            fontFamily: "'DM Sans', sans-serif",
+                        }}
+                        onMouseEnter={(e) => {
+                            ; (e.currentTarget as HTMLButtonElement).style.color = '#fafaf9'
+                                ; (e.currentTarget as HTMLButtonElement).style.borderColor =
+                                    'rgba(255,255,255,0.2)'
+                        }}
+                        onMouseLeave={(e) => {
+                            ; (e.currentTarget as HTMLButtonElement).style.color =
+                                'rgba(255,255,255,0.6)'
+                                ; (e.currentTarget as HTMLButtonElement).style.borderColor =
+                                    'rgba(255,255,255,0.1)'
+                        }}
+                    >
+                        <ArrowLeft size={13} /> Back to Flashcards
+                    </button>
+                    <span
+                        style={{
+                            fontSize: '0.72rem',
+                            color: 'rgba(255,255,255,0.2)',
+                            letterSpacing: '0.08em',
+                            textTransform: 'uppercase',
+                            fontWeight: 600,
+                        }}
+                    >
+                        AI Generator
+                    </span>
+                </div>
+                {/* Pass onSaved so saving comes back here and opens the dialog */}
+                <FlashCardPage onSaved={handleAiSaved} />
+            </div>
+        )
+    }
+
+    // ── Main view ─────────────────────────────────────────────────────
     return (
         <main
             style={{
@@ -160,131 +242,30 @@ export default function FlashcardsPage() {
         >
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Fraunces:wght@700;900&display=swap');
-
-                .hero-glow {
-                    background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(251,191,36,0.1) 0%, transparent 70%);
-                }
-                .fc-card {
-                    background: rgba(255,255,255,0.03);
-                    border: 1px solid rgba(255,255,255,0.07);
-                    border-radius: 16px;
-                    transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
-                    position: relative;
-                    overflow: hidden;
-                }
-                .fc-card:hover {
-                    background: rgba(255,255,255,0.05);
-                    border-color: rgba(251,191,36,0.2);
-                    transform: translateY(-2px);
-                    box-shadow: 0 12px 40px -8px rgba(0,0,0,0.4);
-                }
-                .fc-card::before {
-                    content: '';
-                    position: absolute;
-                    top: 0; left: 0; right: 0;
-                    height: 1px;
-                    background: linear-gradient(90deg, transparent, rgba(251,191,36,0.3), transparent);
-                    opacity: 0;
-                    transition: opacity 0.25s;
-                }
+                .fc-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; transition: all 0.25s cubic-bezier(0.4,0,0.2,1); position: relative; overflow: hidden; }
+                .fc-card:hover { background: rgba(255,255,255,0.05); border-color: rgba(251,191,36,0.2); transform: translateY(-2px); box-shadow: 0 12px 40px -8px rgba(0,0,0,0.4); }
+                .fc-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(251,191,36,0.3), transparent); opacity: 0; transition: opacity 0.25s; }
                 .fc-card:hover::before { opacity: 1; }
-                .fc-input {
-                    background: rgba(255,255,255,0.05) !important;
-                    border: 1px solid rgba(255,255,255,0.1) !important;
-                    color: #fafaf9 !important;
-                    border-radius: 10px !important;
-                    transition: border-color 0.2s !important;
-                }
-                .fc-input:focus {
-                    border-color: rgba(251,191,36,0.4) !important;
-                    outline: none !important;
-                    box-shadow: 0 0 0 3px rgba(251,191,36,0.08) !important;
-                }
+                .fc-input { background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.1) !important; color: #fafaf9 !important; border-radius: 10px !important; transition: border-color 0.2s !important; }
+                .fc-input:focus { border-color: rgba(251,191,36,0.4) !important; outline: none !important; box-shadow: 0 0 0 3px rgba(251,191,36,0.08) !important; }
                 .fc-input::placeholder { color: rgba(255,255,255,0.25) !important; }
-                .fc-btn-primary {
-                    background: #fbbf24 !important;
-                    color: #0c0a08 !important;
-                    font-weight: 600 !important;
-                    border: none !important;
-                    border-radius: 10px !important;
-                    transition: all 0.2s !important;
-                }
-                .fc-btn-primary:hover {
-                    background: #f59e0b !important;
-                    transform: translateY(-1px);
-                    box-shadow: 0 4px 20px rgba(251,191,36,0.3) !important;
-                }
-                .fc-btn-primary:disabled {
-                    background: rgba(251,191,36,0.3) !important;
-                    color: rgba(0,0,0,0.4) !important;
-                    transform: none !important;
-                    box-shadow: none !important;
-                }
-                .fc-btn-outline {
-                    background: transparent !important;
-                    color: rgba(255,255,255,0.7) !important;
-                    border: 1px solid rgba(255,255,255,0.12) !important;
-                    border-radius: 10px !important;
-                    transition: all 0.2s !important;
-                }
-                .fc-btn-outline:hover {
-                    border-color: rgba(255,255,255,0.25) !important;
-                    color: #fafaf9 !important;
-                    background: rgba(255,255,255,0.05) !important;
-                }
-                .set-row {
-                    display: block;
-                    padding: 14px 16px;
-                    border-radius: 12px;
-                    border: 1px solid rgba(255,255,255,0.06);
-                    background: rgba(255,255,255,0.02);
-                    transition: all 0.2s;
-                    text-decoration: none;
-                }
-                .set-row:hover {
-                    border-color: rgba(251,191,36,0.2);
-                    background: rgba(251,191,36,0.04);
-                }
-                .code-pill {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 4px;
-                    font-size: 0.7rem;
-                    padding: 2px 8px;
-                    border-radius: 999px;
-                    background: rgba(255,255,255,0.06);
-                    color: rgba(255,255,255,0.35);
-                    font-family: monospace;
-                }
-                .draft-banner {
-                    background: linear-gradient(135deg, rgba(251,191,36,0.08), rgba(245,158,11,0.04));
-                    border: 1px solid rgba(251,191,36,0.2);
-                    border-radius: 12px;
-                    padding: 12px 16px;
-                }
-                .dialog-dark {
-                    background: #141210 !important;
-                    border: 1px solid rgba(255,255,255,0.1) !important;
-                    border-radius: 20px !important;
-                    color: #fafaf9 !important;
-                }
-                .fc-checkbox {
-                    accent-color: #fbbf24;
-                    width: 15px;
-                    height: 15px;
-                }
-                .section-label {
-                    font-size: 0.65rem;
-                    letter-spacing: 0.1em;
-                    text-transform: uppercase;
-                    font-weight: 600;
-                    color: rgba(255,255,255,0.25);
-                    margin-bottom: 1rem;
-                }
+                .fc-btn-primary { background: #fbbf24 !important; color: #0c0a08 !important; font-weight: 600 !important; border: none !important; border-radius: 10px !important; transition: all 0.2s !important; }
+                .fc-btn-primary:hover { background: #f59e0b !important; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(251,191,36,0.3) !important; }
+                .fc-btn-primary:disabled { background: rgba(251,191,36,0.3) !important; color: rgba(0,0,0,0.4) !important; transform: none !important; box-shadow: none !important; }
+                .fc-btn-outline { background: transparent !important; color: rgba(255,255,255,0.7) !important; border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 10px !important; transition: all 0.2s !important; }
+                .fc-btn-outline:hover { border-color: rgba(255,255,255,0.25) !important; color: #fafaf9 !important; background: rgba(255,255,255,0.05) !important; }
+                .fc-btn-ai { background: linear-gradient(135deg, rgba(251,191,36,0.15), rgba(245,158,11,0.08)) !important; color: #fbbf24 !important; border: 1px solid rgba(251,191,36,0.3) !important; border-radius: 10px !important; font-weight: 600 !important; transition: all 0.2s !important; }
+                .fc-btn-ai:hover { background: linear-gradient(135deg, rgba(251,191,36,0.25), rgba(245,158,11,0.15)) !important; border-color: rgba(251,191,36,0.5) !important; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(251,191,36,0.15) !important; }
+                .set-row { display: block; padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); transition: all 0.2s; text-decoration: none; }
+                .set-row:hover { border-color: rgba(251,191,36,0.2); background: rgba(251,191,36,0.04); }
+                .code-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.35); font-family: monospace; }
+                .draft-banner { background: linear-gradient(135deg, rgba(251,191,36,0.08), rgba(245,158,11,0.04)); border: 1px solid rgba(251,191,36,0.2); border-radius: 12px; padding: 12px 16px; }
+                .dialog-dark { background: #141210 !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 20px !important; color: #fafaf9 !important; }
+                .fc-checkbox { accent-color: #fbbf24; width: 15px; height: 15px; }
+                .section-label { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; color: rgba(255,255,255,0.25); margin-bottom: 1rem; }
             `}</style>
 
             <div className="mx-auto max-w-5xl px-6 pb-16">
-                {/* Hero */}
                 <div className="hero-glow pt-14 pb-10">
                     <div className="flex items-start justify-between gap-4 flex-wrap">
                         <div>
@@ -296,8 +277,7 @@ export default function FlashcardsPage() {
                                     color: '#fbbf24',
                                 }}
                             >
-                                <FlipHorizontal size={12} />
-                                Active Recall
+                                <FlipHorizontal size={12} /> Active Recall
                             </div>
                             <h1
                                 style={{
@@ -324,6 +304,12 @@ export default function FlashcardsPage() {
 
                         <div className="flex items-center gap-2 flex-wrap pt-2">
                             <Button
+                                className="fc-btn-ai gap-2"
+                                onClick={() => setShowAiGenerator(true)}
+                            >
+                                <Wand2 size={14} /> Generate with AI
+                            </Button>
+                            <Button
                                 className="fc-btn-primary gap-2"
                                 disabled={!userId}
                                 onClick={() => {
@@ -331,8 +317,7 @@ export default function FlashcardsPage() {
                                     setDialogOpen(true)
                                 }}
                             >
-                                <Plus size={15} />
-                                New set
+                                <Plus size={15} /> New set
                             </Button>
                             <Button
                                 className="fc-btn-outline gap-2"
@@ -341,13 +326,11 @@ export default function FlashcardsPage() {
                                     setDialogOpen(true)
                                 }}
                             >
-                                <Hash size={15} />
-                                Join by code
+                                <Hash size={15} /> Join by code
                             </Button>
                         </div>
                     </div>
 
-                    {/* Search */}
                     <div className="relative mt-6 max-w-sm">
                         <Search
                             size={14}
@@ -362,7 +345,6 @@ export default function FlashcardsPage() {
                         />
                     </div>
 
-                    {/* Draft banner */}
                     {incomingDraft && (
                         <div className="draft-banner mt-4 flex items-center gap-3">
                             <Sparkles size={15} style={{ color: '#fbbf24', flexShrink: 0 }} />
@@ -377,13 +359,10 @@ export default function FlashcardsPage() {
                     )}
                 </div>
 
-                {/* Grid */}
                 <div className="grid gap-6 lg:grid-cols-2 mt-2">
-                    {/* Your Sets */}
                     <div className="fc-card p-5">
                         <p className="section-label flex items-center gap-2">
-                            <FlipHorizontal size={11} />
-                            Your sets
+                            <FlipHorizontal size={11} /> Your sets
                         </p>
                         <div className="space-y-2">
                             {sets.map((set) => (
@@ -437,11 +416,9 @@ export default function FlashcardsPage() {
                         </div>
                     </div>
 
-                    {/* Discover */}
                     <div className="fc-card p-5">
                         <p className="section-label flex items-center gap-2">
-                            <Compass size={11} />
-                            Discover
+                            <Compass size={11} /> Discover
                         </p>
                         <div className="space-y-2">
                             {discoverSets.map((set) => (
@@ -497,7 +474,6 @@ export default function FlashcardsPage() {
                 </div>
             </div>
 
-            {/* Dialog */}
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogOverlay className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
                 <DialogContent className="dialog-dark sm:max-w-lg w-[95vw]">

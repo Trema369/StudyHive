@@ -26,17 +26,16 @@ import {
     MessageCircle,
     Zap,
     CircleQuestionMark,
+    FileArchiveIcon,
 } from 'lucide-react'
 
 const navItems = [
     { label: 'Home', href: '/home', icon: Home },
-    { label: 'Q&A', href: '/qna', icon: MessageCircleQuestion },
     { label: 'Colonies', href: '/classes', icon: Globe },
-    { label: 'Material', href: '/materials', icon: Layers },
     { label: 'Resources', href: '/resources', icon: BookOpen },
     { label: 'Messages', href: '/chats', icon: MessageCircle },
     { label: 'Flashcards', href: '/flashcards', icon: Zap },
-    { label: 'Quizzes', href: '/quiz', icon: CircleQuestionMark },
+    { label: 'Notes', href: '/notes', icon: FileArchiveIcon },
 ]
 
 export function Sidebar() {
