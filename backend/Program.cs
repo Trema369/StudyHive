@@ -64,7 +64,22 @@ app.UseStaticFiles(
 app.MapControllers();
 app.MapHub<AppHub>("/apphub");
 
-await InitializeDbAsync();
+var retries = 0;
+while (retries < 10)
+{
+    try
+    {
+        await InitializeDbAsync();
+        break;
+    }
+    catch (Exception ex)
+    {
+        retries++;
+        Console.WriteLine($"DB init attempt {retries} failed: {ex.Message}. Retrying in 3s...");
+        await Task.Delay(3000);
+    }
+}
+app.Run();
 
 app.Run();
 
