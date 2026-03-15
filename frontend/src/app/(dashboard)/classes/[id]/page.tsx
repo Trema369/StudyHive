@@ -879,7 +879,7 @@ export default function ClassDetailPage() {
                             </h1>
                             <MarkdownContent
                                 className="prose prose-sm max-w-none mt-1"
-                                style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem' }}
+                                
                                 content={clss?.description ?? ''}
                             />
                             {pinnedLinks.length > 0 && (

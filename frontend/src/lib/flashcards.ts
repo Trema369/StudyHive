@@ -1,4 +1,3 @@
-// frontend/utils/api.ts
 export interface AIFlashcardRequest {
     notes: string;
 }
@@ -10,11 +9,11 @@ export interface FlashcardCard {
     id?: string;
 }
 
-// frontend/utils/api.ts
 export async function generateAIFlashcards(
     notes: string
 ): Promise<FlashcardCard[]> {
-    const res = await fetch('http://localhost:5082/api/flashcards/generate', {
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:5082';
+    const res = await fetch(`${API_BASE}/api/flashcards/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notes }),

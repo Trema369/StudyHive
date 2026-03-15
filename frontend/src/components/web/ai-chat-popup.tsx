@@ -160,7 +160,7 @@ export function AIChatPopup({ open, setOpen }: AIChatPopupProps) {
     const connectionRef = useRef<signalR.HubConnection | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
-    const backendUrl = 'http://localhost:5082';
+    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:5082';
 
     const orderedMessages = useMemo(
         () =>
