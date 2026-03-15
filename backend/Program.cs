@@ -5,7 +5,7 @@ using OllamaSharp;
 using SurrealDb.Net;
 
 // SurrealDB setup
-var surrealUrl = "http://127.0.0.1:8000";
+var surrealUrl = Environment.GetEnvironmentVariable("SURREAL_URL") ?? "http://127.0.0.1:8000";
 
 var surreal = SurrealDbOptions
     .Create()
